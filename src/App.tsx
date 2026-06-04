@@ -370,6 +370,7 @@ function App() {
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
               onClick={() => fileInputRef.current?.click()}
+              className={`upload-zone${isDragging ? ' upload-zone--active' : ''}`}
               style={{
                 minHeight: 190,
                 padding: 26,
@@ -433,9 +434,9 @@ function App() {
             </div>
             <button onClick={() => setActiveStep(0)} style={{ padding: '11px 14px', border: `1px solid ${COLORS.line}`, borderRadius: 10, background: '#fff', fontWeight: 850, cursor: 'pointer' }}>返回修改文本</button>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 14 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 14 }}>
             {chapters.map((chapter) => (
-              <div key={chapter.index} style={{ padding: 18, border: `1px solid ${COLORS.line}`, borderRadius: 14, background: '#fff' }}>
+              <div key={chapter.index} className="card" style={{ padding: 18, border: `1px solid ${COLORS.line}`, borderRadius: 14, background: '#fff' }}>
                 <div style={{ color: COLORS.accent, fontSize: 13, fontWeight: 950 }}>第 {chapter.index} 章</div>
                 <div style={{ marginTop: 8, fontSize: 18, fontWeight: 950 }}>{chapter.title}</div>
                 <p style={{ color: COLORS.muted, lineHeight: 1.6, minHeight: 46 }}>{compactText(chapter.content, 82)}</p>
@@ -510,7 +511,7 @@ function App() {
 
   return (
     <div style={{ minHeight: '100vh', background: `linear-gradient(180deg, #f8faff 0%, ${COLORS.canvas} 42%, #eef2ff 100%)`, color: COLORS.ink }}>
-      <header style={{ height: 76, background: 'rgba(255,255,255,0.94)', borderBottom: `1px solid ${COLORS.line}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 34px', boxShadow: '0 2px 16px rgba(15, 23, 42, 0.07)', backdropFilter: 'blur(10px)' }}>
+      <header className="app-header" style={{ height: 76, background: 'rgba(255,255,255,0.94)', borderBottom: `1px solid ${COLORS.line}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 34px', boxShadow: '0 2px 16px rgba(15, 23, 42, 0.07)', backdropFilter: 'blur(10px)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
           <div style={{ width: 50, height: 50, borderRadius: 12, background: `linear-gradient(135deg, ${COLORS.accent} 0%, ${COLORS.accentDark} 100%)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, boxShadow: '0 8px 18px rgba(79, 70, 229, 0.25)' }}>🎬</div>
           <div>
@@ -521,12 +522,12 @@ function App() {
         <button onClick={activeStep === 3 ? generateYaml : goNext} disabled={activeStep < 2 && !canContinue && activeStep !== 0} style={{ padding: '13px 24px', border: 'none', borderRadius: 10, background: activeStep < 2 && !canContinue && activeStep !== 0 ? '#d7deea' : `linear-gradient(135deg, ${COLORS.accent} 0%, ${COLORS.accentDark} 100%)`, color: '#fff', fontSize: 15, fontWeight: 950, cursor: 'pointer', boxShadow: '0 10px 22px rgba(79, 70, 229, 0.20)' }}>{activeStep === 3 ? '生成 YAML' : activeStep === 2 ? '生成 YAML 并进入导出' : '下一步'}</button>
       </header>
 
-      <main style={{ display: 'grid', gridTemplateColumns: '300px minmax(0, 1fr)', minHeight: 'calc(100vh - 76px)' }}>
-        <aside style={{ background: 'rgba(255,255,255,0.86)', borderRight: `1px solid ${COLORS.line}`, padding: 24, backdropFilter: 'blur(8px)' }}>
+      <main className="app-layout">
+        <aside className="app-sidebar">
           <h2 style={{ fontSize: 18, fontWeight: 950, margin: '0 0 18px' }}>创作流程</h2>
           <div style={{ display: 'grid', gap: 12 }}>
             {steps.map((step, index) => (
-              <button key={step.title} onClick={() => setActiveStep(index)} style={{ textAlign: 'left', display: 'flex', gap: 12, alignItems: 'flex-start', padding: 14, borderRadius: 12, border: `1px solid ${activeStep === index ? COLORS.accent : COLORS.line}`, background: activeStep === index ? COLORS.soft : '#fff', cursor: 'pointer' }}>
+              <button key={step.title} onClick={() => setActiveStep(index)} className={`step-btn${activeStep === index ? ' step-btn--active' : ''}`} style={{ textAlign: 'left', display: 'flex', gap: 12, alignItems: 'flex-start', padding: 14, borderRadius: 12, border: `1px solid ${activeStep === index ? COLORS.accent : COLORS.line}`, background: activeStep === index ? COLORS.soft : '#fff', cursor: 'pointer', width: '100%' }}>
                 <span style={{ width: 32, height: 32, borderRadius: 999, background: activeStep === index ? COLORS.accent : '#f1f5f9', color: activeStep === index ? '#fff' : COLORS.ink, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 950 }}>{index + 1}</span>
                 <span>
                   <span style={{ display: 'block', fontSize: 15, fontWeight: 950 }}>{step.title}</span>
@@ -554,8 +555,8 @@ function App() {
           </div>
         </aside>
 
-        <section style={{ padding: 28 }}>
-          <div style={{ background: COLORS.panel, border: `1px solid ${COLORS.line}`, borderRadius: 18, padding: 28, boxShadow: '0 10px 28px rgba(15, 23, 42, 0.08)' }}>
+        <section className="app-main" style={{ padding: 28 }}>
+          <div className="fade-in" style={{ background: COLORS.panel, border: `1px solid ${COLORS.line}`, borderRadius: 18, padding: 28, boxShadow: '0 10px 28px rgba(15, 23, 42, 0.08)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 20, alignItems: 'flex-start', marginBottom: 24 }}>
               <div>
                 <h2 style={{ display: 'flex', alignItems: 'center', gap: 14, fontSize: 40, lineHeight: 1.1, fontWeight: 950, margin: 0 }}>
