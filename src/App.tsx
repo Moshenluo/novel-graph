@@ -171,34 +171,54 @@ const buildCharacterGraph = (chapters: NovelChapter[], personas: AIPersona[]) =>
 const inferLocation = (content: string) => /地下室|密室|书店|钟楼|门口|房间|街道|山谷|城门|屋内|庭院/.exec(content)?.[0] ?? '待定场景';
 const inferTime = (content: string) => /清晨|早晨|雨夜|深夜|夜晚|黄昏|午后|傍晚|黎明/.exec(content)?.[0] ?? '待定时间';
 
-const convertNovelToScreenplayYaml = (text: string) => {
+const convertNovelToScreenplayYaml = (text: string, personas: AIPersona[] = [], enrichedScenes: Record<number, AISceneDraft> = {}) => {
   const chapters = splitNovelChapters(text);
   if (chapters.length < 3) {
     throw new Error(`当前识别到 ${chapters.length} 个章节，请至少导入或粘贴 3 个章节。`);
   }
 
-  const characters = extractCharacters(chapters);
+  const sourceCharacters = personas.length > 0 ? personas : getActiveCharacters();
   const scenes = chapters.map((chapter, index) => {
+    const enriched = enrichedScenes[index];
     const sentences = chapter.content.split(/[。！？!?]\s*/).map((item) => item.trim()).filter(Boolean);
     const dialogues = extractQuotedDialogue(chapter.content).slice(0, 8);
+    const sceneId = `scene_${String(index + 1).padStart(2, '0')}`;
+    if (enriched) {
+      return {
+        id: sceneId,
+        sourceChapter: chapter.index,
+        title: chapter.title.replace(/^第[一二三四五六七八九十百千万0-9]+[章节卷篇集回]\s*/, '') || chapter.title,
+        location: enriched.location ?? '待定',
+        time: enriched.time ?? '待定',
+        summary: enriched.summary ?? compactText(sentences.slice(0, 2).join('。'), 120),
+        mood: enriched.mood ?? '中性',
+        beats: (enriched.beats ?? []).map((beat: { action: string }, beatIndex: number) => ({
+          id: `beat_${index + 1}_${beatIndex + 1}`,
+          action: beat.action ?? '',
+        })),
+        dialogues,
+      };
+    }
     return {
-      id: `scene_${String(index + 1).padStart(2, '0')}`,
+      id: sceneId,
       sourceChapter: chapter.index,
-      title: chapter.title.replace(/^第[一二三四五六七八九十百千万0-9]+章\s*/, '') || chapter.title,
+      title: chapter.title.replace(/^第[一二三四五六七八九十百千万0-9]+[章节卷篇集回]\s*/, '') || chapter.title,
       location: inferLocation(chapter.content),
       time: inferTime(chapter.content),
       summary: compactText(sentences.slice(0, 2).join('。'), 120),
+      mood: '中性',
       beats: sentences.slice(0, 5).map((sentence, beatIndex) => ({ id: `beat_${index + 1}_${beatIndex + 1}`, action: compactText(sentence, 110) })),
       dialogues,
     };
   });
 
-  const characterBlock = characters.length > 0
-    ? characters.map((character) => [
+  const characterBlock = sourceCharacters.length > 0
+    ? sourceCharacters.map((character) => [
       `  - id: "${character.id}"`,
       `    name: ${yamlScalar(character.name)}`,
       `    role: "${character.role}"`,
-      '    motivation: "待作者补充"',
+      `    motivation: ${yamlScalar(character.motivation ?? '待作者补充')}`,
+      ...(character.traits && character.traits.length > 0 ? [`    traits: [${(character.traits ?? []).map((t: string) => `"${t}"`).join(', ')}]`] : []),
     ].join('\n'))
     : ['  []'];
 
@@ -266,6 +286,9 @@ function App() {
   const [aiCharacters, setAiCharacters] = useState<AIPersona[]>([]);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState('');
+  const [aiScenes, setAiScenes] = useState<Record<number, AISceneDraft>>({});
+  const [aiEnriching, setAiEnriching] = useState(false);
+  const [aiEnrichProgress, setAiEnrichProgress] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const runAIRecognition = useCallback(async () => {
@@ -282,6 +305,26 @@ function App() {
     } finally {
       setAiLoading(false);
     }
+  }, [chapters]);
+
+  const enrichAllScenes = useCallback(async () => {
+    if (chapters.length < 3) return;
+    setAiEnriching(true);
+    setAiEnrichProgress('');
+    const enriched: Record<number, AISceneDraft> = {};
+    for (let i = 0; i < chapters.length; i += 1) {
+      setAiEnrichProgress(`正在丰富第 ${i + 1}/${chapters.length} 章…`);
+      try {
+        const result = await enrichScene(chapters[i].title, chapters[i].content);
+        enriched[i] = result;
+      } catch {
+        // 单章失败不中断，使用默认值
+        enriched[i] = { summary: '', location: '待定', time: '待定', beats: [], mood: '中性' };
+      }
+    }
+    setAiScenes(enriched);
+    setAiEnriching(false);
+    setStatus(`AI 已丰富 ${Object.keys(enriched).length} 个场景`);
   }, [chapters]);
 
   const chapters = useMemo(() => splitNovelChapters(novelInput), [novelInput]);
@@ -344,9 +387,9 @@ function App() {
   }, [handleFileImport]);
 
   const generateYaml = () => {
-    const yaml = convertNovelToScreenplayYaml(novelInput);
+    const yaml = convertNovelToScreenplayYaml(novelInput, aiCharacters, aiScenes);
     setScreenplayYaml(yaml);
-    setStatus('已生成剧本 YAML 初稿。');
+    setStatus(`已生成剧本 YAML 初稿（AI 丰富：${aiCharacters.length} 人物 / ${Object.keys(aiScenes).length} 场景）。`);
     return yaml;
   };
 
@@ -475,8 +518,16 @@ function App() {
       return (
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(520px, 1fr) 320px', gap: 22 }}>
           <div>
-            <h3 style={{ margin: '0 0 8px', fontSize: 24, fontWeight: 950 }}>剧本草案</h3>
-            <p style={{ margin: '0 0 18px', color: COLORS.muted }}>这里展示系统即将写入 YAML 的场景摘要、动作节拍和对白数量。</p>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
+              <div>
+                <h3 style={{ margin: '0 0 8px', fontSize: 24, fontWeight: 950 }}>剧本草案</h3>
+                <p style={{ margin: 0, color: COLORS.muted }}>AI 丰富后的场景摘要、动作节拍和对白潜台词。</p>
+              </div>
+              <button onClick={enrichAllScenes} disabled={aiEnriching || chapters.length < 3} style={{ padding: '10px 18px', border: 'none', borderRadius: 10, background: aiEnriching || chapters.length < 3 ? '#e2e8f0' : `linear-gradient(135deg, ${COLORS.accent} 0%, ${COLORS.accentDark} 100%)`, color: aiEnriching || chapters.length < 3 ? COLORS.muted : '#fff', fontWeight: 850, cursor: aiEnriching || chapters.length < 3 ? 'not-allowed' : 'pointer', fontSize: 14 }}>
+                {aiEnriching ? aiEnrichProgress || 'AI 处理中…' : Object.keys(aiScenes).length > 0 ? `AI 已丰富 ${Object.keys(aiScenes).length} 场 ✓` : 'AI 丰富剧本'}
+              </button>
+            </div>
+            {aiEnriching && <div style={{ marginBottom: 12, padding: '8px 12px', borderRadius: 8, background: '#ede9fe', color: COLORS.accent, fontSize: 13, fontWeight: 850 }}>{aiEnrichProgress}</div>}
             <div style={{ display: 'grid', gap: 12 }}>
               {draftScenes.map((scene) => (
                 <div key={scene.id} style={{ padding: 18, borderRadius: 14, border: `1px solid ${COLORS.line}`, background: '#fff' }}>
