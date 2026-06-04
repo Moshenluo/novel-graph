@@ -47,14 +47,21 @@ const yamlScalar = (value: string | number | boolean) => {
   return `"${text.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 };
 
-// 章节匹配正则：覆盖中文"第X章/节"、英文"Chapter N"等常见格式
+// 章节匹配正则：覆盖多种中英文章节格式，兼顾精确度
 const CHAPTER_PATTERN = new RegExp(
   '(^|\\n)[ \\t\u3000]*(' +
-  '(?:第[一二三四五六七八九十百千万零〇\\d]+[章节卷篇集][^\\n]*)' +
-  '|(?:(?:Chapter|Part)\\s+[\\dIVXivx]+[^\\n]*)' +
+  // 1. 第X章/节/卷/篇/集/回（中文数字或阿拉伯数字）— 覆盖红楼梦"第X回"
+  '(?:第[一二三四五六七八九十百千万零〇\\d]+[章节卷篇集回][^\\n]*)' +
+  // 2. Chapter N / Part N / Act N / Scene / Episode（英文），支持罗马数字 + 点 — 覆盖荒野的呼唤
+  '|(?:(?:Chapter|Part|Act|Scene|Episode)\\s+[\\dIVXivx]+[^\\n]*)' +
+  // 3. 全角空格前缀 + 单个中文数字独占一行 — 覆盖狂人日记"　　一"
+  '|(?:[\u3000\\s]*[一二三四五六七八九十]+[ \\t\u3000]*$)' +
+  // 4. 中文数字序号 "一、" "二、" 等独占一行
   '|(?:[一二三四五六七八九十]{1,3}[、。])' +
+  // 5. 括号中文序号 "（一）" "（二）"
   '|(?:（[一二三四五六七八九十]{1,3}）)' +
-  '|(?:\\d{1,3}[.、][ \\t]*[\\u4e00-\\u9fa5\\w][^\\n]{0,38})' +
+  // 6. 阿拉伯数字序号，后跟内容必须含中文字符，防误匹配"1.F."等版权条款
+  '|(?:\\d{1,3}[.、][ \\t]*[\\u4e00-\\u9fa5][^\\n]{0,38})' +
   ')[ \\t\u3000]*\\n',
   'gim'
 );
@@ -66,11 +73,31 @@ const splitNovelChapters = (text: string): NovelChapter[] => {
   if (matches.length === 0) {
     return [{ title: '未分章文本', content: normalized, index: 1 }];
   }
-  return matches.map((match, idx) => {
-    const start = (match.index ?? 0) + match[0].length;
-    const end = idx + 1 < matches.length ? matches[idx + 1].index ?? normalized.length : normalized.length;
-    return { title: match[2].trim(), content: normalized.slice(start, end).trim(), index: idx + 1 };
+
+  // Build raw list; filter out entries whose body is too short (table-of-contents rows,
+  // copyright notices, etc. typically have no real content below the heading).
+  const rawChapters = matches
+    .map((match, idx) => {
+      const start = (match.index ?? 0) + match[0].length;
+      const end = idx + 1 < matches.length ? matches[idx + 1].index ?? normalized.length : normalized.length;
+      return { title: match[2].trim(), content: normalized.slice(start, end).trim(), matchIndex: match.index ?? 0 };
+    })
+    .filter((chapter) => chapter.content.length >= 30);
+
+  // De-duplicate by title: when the same title appears in both a TOC and the body,
+  // keep only the last occurrence (body position has a higher matchIndex).
+  const titleLastIndex = new Map<string, number>();
+  rawChapters.forEach((chapter, idx) => {
+    const key = chapter.title.replace(/\s+/g, '').toLowerCase();
+    titleLastIndex.set(key, idx);
   });
+
+  return rawChapters
+    .filter((chapter, idx) => {
+      const key = chapter.title.replace(/\s+/g, '').toLowerCase();
+      return titleLastIndex.get(key) === idx;
+    })
+    .map((chapter, idx) => ({ title: chapter.title, content: chapter.content, index: idx + 1 }));
 };
 
 const compactText = (value: string, max = 100) => {
