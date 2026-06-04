@@ -371,6 +371,8 @@ function App() {
               <div style={{ fontSize: 20, fontWeight: 950 }}>复制粘贴</div>
               <div style={{ color: COLORS.muted, marginTop: 8, lineHeight: 1.7 }}>把小说正文粘贴到右侧输入框。建议保留章节标题，便于后续确认。</div>
             </div>
+            {/* Fix: reset input.value after each selection so that re-selecting the same
+                file triggers onChange again (browsers suppress the event otherwise) */}
             <input
               ref={fileInputRef}
               type="file"
@@ -378,6 +380,8 @@ function App() {
               style={{ display: 'none' }}
               onChange={(event) => {
                 handleFileImport(event.target.files?.[0]);
+                // Reset value so the same file can be selected again
+                event.target.value = '';
               }}
             />
           </div>
