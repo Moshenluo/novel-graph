@@ -1,4 +1,5 @@
-import { useMemo, useRef, useState, DragEvent, useCallback } from 'react';
+import { useMemo, useRef, useState, useCallback } from 'react';
+import type { DragEvent } from 'react';
 import mammoth from 'mammoth';
 
 interface NovelChapter {
@@ -371,33 +372,20 @@ function App() {
               onDrop={handleDrop}
               onClick={() => fileInputRef.current?.click()}
               className={`upload-zone${isDragging ? ' upload-zone--active' : ''}`}
-              style={{
-                minHeight: 190,
-                padding: 26,
-                borderRadius: 16,
-                border: `2px dashed ${isDragging ? COLORS.accent : COLORS.line}`,
-                background: isDragging ? '#ede9fe' : COLORS.soft,
-                cursor: 'pointer',
-                textAlign: 'left',
-                boxShadow: isDragging ? `0 0 0 4px rgba(109,93,252,0.15)` : '0 12px 28px rgba(79, 70, 229, 0.10)',
-                transition: 'all 0.18s ease',
-              }}
             >
-              <div style={{ fontSize: 38, marginBottom: 14 }}>{isDragging ? '📂' : '📄'}</div>
-              <div style={{ fontSize: 22, fontWeight: 950 }}>{isDragging ? '松开以导入文件' : '上传文档'}</div>
-              <div style={{ color: COLORS.muted, marginTop: 8 }}>
+              <div className="upload-icon">{isDragging ? '📂' : '📄'}</div>
+              <div className="upload-title">{isDragging ? '松开以导入文件' : '上传文档'}</div>
+              <div className="upload-hint">
                 {isDragging ? '支持拖拽导入' : '点击或拖拽 .txt / .md / .docx，本地读取不上传。'}
               </div>
               {importedFileName && !isDragging && (
-                <div style={{ marginTop: 12, padding: '6px 10px', borderRadius: 8, background: '#fff', fontSize: 13, color: COLORS.accent, fontWeight: 850, display: 'inline-block' }}>
-                  📎 {importedFileName}
-                </div>
+                <div className="upload-filename">📎 {importedFileName}</div>
               )}
             </div>
-            <div style={{ padding: 22, borderRadius: 16, border: `1px solid ${COLORS.line}`, background: '#fff' }}>
+            <div className="card">
               <div style={{ fontSize: 32, marginBottom: 12 }}>⌨️</div>
-              <div style={{ fontSize: 20, fontWeight: 950 }}>复制粘贴</div>
-              <div style={{ color: COLORS.muted, marginTop: 8, lineHeight: 1.7 }}>把小说正文粘贴到右侧输入框。建议保留章节标题，便于后续确认。</div>
+              <div className="upload-title">复制粘贴</div>
+              <div className="upload-hint">把小说正文粘贴到右侧输入框。建议保留章节标题，便于后续确认。</div>
             </div>
             {/* Fix: reset input.value after each selection so that re-selecting the same
                 file triggers onChange again (browsers suppress the event otherwise) */}
@@ -510,69 +498,88 @@ function App() {
   };
 
   return (
-    <div style={{ minHeight: '100vh', background: `linear-gradient(180deg, #f8faff 0%, ${COLORS.canvas} 42%, #eef2ff 100%)`, color: COLORS.ink }}>
-      <header className="app-header" style={{ height: 76, background: 'rgba(255,255,255,0.94)', borderBottom: `1px solid ${COLORS.line}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 34px', boxShadow: '0 2px 16px rgba(15, 23, 42, 0.07)', backdropFilter: 'blur(10px)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          <div style={{ width: 50, height: 50, borderRadius: 12, background: `linear-gradient(135deg, ${COLORS.accent} 0%, ${COLORS.accentDark} 100%)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, boxShadow: '0 8px 18px rgba(79, 70, 229, 0.25)' }}>🎬</div>
+    <div style={{ minHeight: '100vh', background: 'var(--cream)', color: 'var(--ink)' }}>
+      <header className="app-header">
+        <div className="header-inner">
+        <a className="header-brand" href="#" onClick={(e) => { e.preventDefault(); setActiveStep(0); setNovelInput(''); setScreenplayYaml(''); setStatus(''); setError(''); }}>
+          <div className="header-logo">🎬</div>
           <div>
-            <h1 style={{ fontSize: 22, lineHeight: 1.1, fontWeight: 950, margin: 0 }}>AI 小说转剧本工具</h1>
-            <div style={{ fontSize: 13, color: COLORS.muted, marginTop: 4 }}>分步创作，最终导出结构化 YAML 剧本</div>
+            <div className="header-title"> novel-graph</div>
+            <div className="header-subtitle">AI 小说转剧本 · 结构化 YAML 导出</div>
           </div>
+        </a>
+        <button
+          className="header-action"
+          onClick={activeStep === 3 ? generateYaml : goNext}
+          disabled={activeStep < 2 && !canContinue && activeStep !== 0}
+          style={activeStep < 2 && !canContinue && activeStep !== 0 ? { background: 'var(--line)', color: '#b0a89c', cursor: 'not-allowed' } : {}}
+        >
+          {activeStep === 3 ? '生成 YAML' : activeStep === 2 ? '生成 YAML · 进入导出' : '下一步'}
+        </button>
         </div>
-        <button onClick={activeStep === 3 ? generateYaml : goNext} disabled={activeStep < 2 && !canContinue && activeStep !== 0} style={{ padding: '13px 24px', border: 'none', borderRadius: 10, background: activeStep < 2 && !canContinue && activeStep !== 0 ? '#d7deea' : `linear-gradient(135deg, ${COLORS.accent} 0%, ${COLORS.accentDark} 100%)`, color: '#fff', fontSize: 15, fontWeight: 950, cursor: 'pointer', boxShadow: '0 10px 22px rgba(79, 70, 229, 0.20)' }}>{activeStep === 3 ? '生成 YAML' : activeStep === 2 ? '生成 YAML 并进入导出' : '下一步'}</button>
       </header>
 
       <main className="app-layout">
         <aside className="app-sidebar">
-          <h2 style={{ fontSize: 18, fontWeight: 950, margin: '0 0 18px' }}>创作流程</h2>
-          <div style={{ display: 'grid', gap: 12 }}>
+          <h2 className="section-title" style={{ marginBottom: 18 }}>创作流程</h2>
+          <div className="step-nav">
             {steps.map((step, index) => (
-              <button key={step.title} onClick={() => setActiveStep(index)} className={`step-btn${activeStep === index ? ' step-btn--active' : ''}`} style={{ textAlign: 'left', display: 'flex', gap: 12, alignItems: 'flex-start', padding: 14, borderRadius: 12, border: `1px solid ${activeStep === index ? COLORS.accent : COLORS.line}`, background: activeStep === index ? COLORS.soft : '#fff', cursor: 'pointer', width: '100%' }}>
-                <span style={{ width: 32, height: 32, borderRadius: 999, background: activeStep === index ? COLORS.accent : '#f1f5f9', color: activeStep === index ? '#fff' : COLORS.ink, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 950 }}>{index + 1}</span>
+              <button
+                key={step.title}
+                onClick={() => setActiveStep(index)}
+                className={`step-btn${activeStep === index ? ' step-btn--active' : ''}`}
+              >
+                <span className="step-num">{index + 1}</span>
                 <span>
-                  <span style={{ display: 'block', fontSize: 15, fontWeight: 950 }}>{step.title}</span>
-                  <span style={{ display: 'block', color: COLORS.muted, fontSize: 12, marginTop: 3 }}>{step.desc}</span>
+                  <span className="step-text-title">{step.title}</span>
+                  <span className="step-text-desc">{step.desc}</span>
                 </span>
               </button>
             ))}
           </div>
 
-          <h2 style={{ fontSize: 18, fontWeight: 950, margin: '28px 0 14px' }}>当前状态</h2>
-          {[
-            ['章节数量', `${chapters.length} / 至少 3 章`, canContinue],
-            ['人物候选', `${graph.nodes.length} 个`, graph.nodes.length > 0],
-            ['草案场景', `${draftScenes.length} 个`, draftScenes.length > 0],
-            ['YAML 初稿', screenplayYaml ? '已生成' : '未生成', Boolean(screenplayYaml)],
-          ].map(([label, value, passed]) => (
-            <div key={String(label)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderBottom: `1px solid ${COLORS.line}` }}>
-              <span style={{ fontSize: 13, color: COLORS.muted }}>{label}</span>
-              <span style={{ fontSize: 13, fontWeight: 950, color: passed ? COLORS.success : COLORS.muted }}>{value}</span>
-            </div>
-          ))}
+          <div className="status-panel">
+            <div className="status-panel-title">当前状态</div>
+            {[
+              ['章节数量', `${chapters.length} / 至少 3 章`, canContinue],
+              ['人物候选', `${graph.nodes.length} 个`, graph.nodes.length > 0],
+              ['草案场景', `${draftScenes.length} 个`, draftScenes.length > 0],
+              ['YAML 初稿', screenplayYaml ? '已生成' : '未生成', Boolean(screenplayYaml)],
+            ].map(([label, value, passed]) => (
+              <div key={String(label)} className="status-row">
+                <span className="status-label">{label}</span>
+                <span className={`status-value ${passed ? '--ok' : ''}`}>{value}</span>
+              </div>
+            ))}
+          </div>
 
-          <div style={{ marginTop: 24, padding: 16, borderRadius: 12, background: '#eef2ff', color: COLORS.ink, fontSize: 13, lineHeight: 1.7 }}>
+          <div className="sidebar-note">
             本工具只在浏览器本地解析文本，不调用外部接口。人物共现只作为参考线索。
           </div>
         </aside>
 
-        <section className="app-main" style={{ padding: 28 }}>
-          <div className="fade-in" style={{ background: COLORS.panel, border: `1px solid ${COLORS.line}`, borderRadius: 18, padding: 28, boxShadow: '0 10px 28px rgba(15, 23, 42, 0.08)' }}>
+        <section className="app-main">
+          <div className="main-card fade-in">
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 20, alignItems: 'flex-start', marginBottom: 24 }}>
               <div>
-                <h2 style={{ display: 'flex', alignItems: 'center', gap: 14, fontSize: 40, lineHeight: 1.1, fontWeight: 950, margin: 0 }}>
-                  <span style={{ width: 56, height: 56, borderRadius: 14, background: COLORS.soft, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 34 }}>{activeStep === 0 ? '📥' : activeStep === 1 ? '📚' : activeStep === 2 ? '🎭' : '🧾'}</span>
+                <h2 className="page-title">
+                  <span style={{ width: 56, height: 56, borderRadius: 14, background: 'var(--gold-light)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 34, marginRight: 14 }}>{activeStep === 0 ? '📥' : activeStep === 1 ? '📚' : activeStep === 2 ? '🎭' : '🧾'}</span>
                   {steps[activeStep].title}
                 </h2>
-                <p style={{ margin: '10px 0 0', color: COLORS.muted, fontSize: 16 }}>{steps[activeStep].desc}，最后输出可编辑的 YAML 剧本初稿。</p>
+                <p className="page-desc">{steps[activeStep].desc}，最后输出可编辑的 YAML 剧本初稿。</p>
               </div>
               <div style={{ display: 'flex', gap: 10 }}>
-                {activeStep > 0 && <button onClick={() => setActiveStep((step) => Math.max(0, step - 1))} style={{ padding: '12px 16px', border: `1px solid ${COLORS.line}`, borderRadius: 10, background: '#fff', color: COLORS.ink, fontWeight: 850, cursor: 'pointer' }}>上一步</button>}
-                <button onClick={() => { setNovelInput(''); setScreenplayYaml(''); setStatus(''); setError(''); setImportedFileName(''); setActiveStep(0); }} style={{ padding: '12px 16px', border: `1px solid ${COLORS.line}`, borderRadius: 10, background: '#fff', color: COLORS.ink, fontWeight: 850, cursor: 'pointer' }}>重置</button>
-                <button onClick={activeStep === 3 ? generateYaml : goNext} style={{ padding: '12px 20px', border: 'none', borderRadius: 10, background: COLORS.accent, color: '#fff', fontWeight: 950, cursor: 'pointer' }}>{activeStep === 3 ? '重新生成 YAML' : activeStep === 2 ? '生成 YAML' : '下一步'}</button>
+                {activeStep > 0 && <button className="btn btn-ghost btn-sm" onClick={() => setActiveStep((step) => Math.max(0, step - 1))}>上一步</button>}
+                <button className="btn btn-ghost btn-sm" onClick={() => { setNovelInput(''); setScreenplayYaml(''); setStatus(''); setError(''); setImportedFileName(''); setActiveStep(0); }}>重置</button>
+                <button className="btn btn-primary" onClick={activeStep === 3 ? generateYaml : goNext}>{activeStep === 3 ? '重新生成 YAML' : activeStep === 2 ? '生成 YAML' : '下一步'}</button>
               </div>
             </div>
 
-            {(status || error) && <div style={{ marginBottom: 16, padding: '12px 14px', borderRadius: 10, background: error ? '#fef2f2' : '#ecfdf5', color: error ? COLORS.danger : '#047857', fontSize: 14, fontWeight: 850 }}>{error || status}</div>}
+            {(status || error) && (
+              <div className={`status-toast ${error ? '--error' : '--success'}`}>
+                {error || status}
+              </div>
+            )}
 
             {renderStepContent()}
           </div>
