@@ -1584,14 +1584,14 @@ function App() {
     return (
       <div className="studio-grid-export">
         <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-            <h3 style={{ margin: 0, fontSize: 24, fontWeight: 950 }}>YAML 导出</h3>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button onClick={handleCopy} disabled={!screenplayYaml} style={{ padding: '9px 13px', border: 'none', borderRadius: 8, background: screenplayYaml ? COLORS.ink : '#e2e8f0', color: screenplayYaml ? '#fff' : COLORS.muted, fontWeight: 850, cursor: screenplayYaml ? 'pointer' : 'not-allowed' }}>复制</button>
-              <button onClick={handleDownload} disabled={!screenplayYaml} style={{ padding: '9px 13px', border: 'none', borderRadius: 8, background: screenplayYaml ? COLORS.success : '#e2e8f0', color: screenplayYaml ? '#fff' : COLORS.muted, fontWeight: 850, cursor: screenplayYaml ? 'pointer' : 'not-allowed' }}>下载</button>
+          <div className="yaml-export-head">
+            <h3>YAML 导出</h3>
+            <div className="yaml-export-actions">
+              <button className="yaml-action yaml-action--copy" onClick={handleCopy} disabled={!screenplayYaml}>复制</button>
+              <button className="yaml-action yaml-action--download" onClick={handleDownload} disabled={!screenplayYaml}>下载</button>
             </div>
           </div>
-          <pre style={{ minHeight: 560, margin: 0, padding: 20, border: `2px solid ${COLORS.line}`, borderRadius: 14, background: '#0f172a', color: '#e2e8f0', overflow: 'auto', whiteSpace: 'pre-wrap', fontSize: 13, lineHeight: 1.65 }}>{screenplayYaml || '点击下方"生成 YAML"后显示结构化剧本初稿。'}</pre>
+          <pre className="yaml-preview">{screenplayYaml || '点击下方"生成 YAML"后显示结构化剧本初稿。'}</pre>
         </div>
         <div className="studio-panel studio-panel-pad" style={{ alignSelf: 'start' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
