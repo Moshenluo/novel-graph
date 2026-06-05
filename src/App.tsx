@@ -796,6 +796,13 @@ function App() {
     { title: 'YAML 导出', desc: '生成结构化 YAML 文件' },
   ];
 
+  const workbenchMetrics = [
+    { label: '章节', value: `${chapters.length}`, state: canContinue ? 'ok' : 'pending' },
+    { label: '人物', value: `${effectiveCharacters.length}`, state: effectiveCharacters.length > 0 ? 'ok' : 'pending' },
+    { label: '场景', value: `${draftScenes.length}`, state: draftScenes.length >= 3 ? 'ok' : 'pending' },
+    { label: 'YAML', value: screenplayYaml ? '已生成' : '待生成', state: screenplayYaml ? 'ok' : 'pending' },
+  ];
+
   const handleFileImport = useCallback(async (file?: File) => {
     if (!file) return;
     try {
@@ -1068,8 +1075,8 @@ function App() {
                 <div className="upload-filename">📎 {importedFileName}</div>
               )}
             </div>
-            <div className="card">
-              <div style={{ fontSize: 32, marginBottom: 12 }}>⌨️</div>
+            <div className="paste-guide">
+              <div className="paste-guide-icon">⌘</div>
               <div className="upload-title">复制粘贴</div>
               <div className="upload-hint">把小说正文粘贴到右侧输入框。建议保留章节标题，便于后续确认。</div>
             </div>
@@ -1092,7 +1099,12 @@ function App() {
               <label style={{ fontSize: 16, fontWeight: 950 }}>小说正文</label>
               <span style={{ color: COLORS.muted, fontSize: 13 }}>识别章节：{chapters.length}</span>
             </div>
-            <textarea value={novelInput} onChange={(event) => { setNovelInput(event.target.value); setScreenplayYaml(''); setError(''); setImportedFileName(''); setAiCharacters(null); setGenerationStats(createEmptyGenerationStats()); aiRunRef.current = ''; }} placeholder="在这里粘贴小说文本。请至少包含 3 个章节，例如：第一章、第二章、第三章。" style={{ width: '100%', minHeight: 500, padding: 20, border: `2px solid ${error ? COLORS.danger : COLORS.line}`, borderRadius: 14, resize: 'vertical', fontSize: 15, lineHeight: 1.75, fontFamily: 'Consolas, Menlo, monospace', color: COLORS.ink, background: '#f8fafc' }} />
+            <textarea
+              value={novelInput}
+              onChange={(event) => { setNovelInput(event.target.value); setScreenplayYaml(''); setError(''); setImportedFileName(''); setAiCharacters(null); setGenerationStats(createEmptyGenerationStats()); aiRunRef.current = ''; }}
+              placeholder="在这里粘贴小说文本。请至少包含 3 个章节，例如：第一章、第二章、第三章。"
+              className={`novel-textarea${error ? ' novel-textarea--error' : ''}`}
+            />
           </div>
         </div>
       );
@@ -1338,6 +1350,20 @@ function App() {
 
         <section className="app-main">
           <div className="main-card fade-in">
+            <div className="workspace-ribbon">
+              <div>
+                <div className="workspace-eyebrow">Novel to Screenplay YAML</div>
+                <div className="workspace-title">改编工作台</div>
+              </div>
+              <div className="workspace-metrics">
+                {workbenchMetrics.map((metric) => (
+                  <div key={metric.label} className={`workspace-metric workspace-metric--${metric.state}`}>
+                    <span>{metric.label}</span>
+                    <strong>{metric.value}</strong>
+                  </div>
+                ))}
+              </div>
+            </div>
             <div className="studio-topline">
               <div>
                 <div className="studio-kicker">Screenplay Conversion Workspace</div>
