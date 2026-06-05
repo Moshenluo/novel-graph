@@ -14,6 +14,7 @@ interface DialogueLine {
 }
 
 type CharacterRole = 'protagonist' | 'major_supporting' | 'supporting' | 'minor';
+type AdaptationTargetId = 'film_short' | 'web_series' | 'stage_play';
 
 interface ScreenplayCharacter {
   id: string;
@@ -68,6 +69,15 @@ interface ReviewChecklistItem {
   status: 'passed' | 'review' | 'todo';
 }
 
+interface AdaptationTarget {
+  id: AdaptationTargetId;
+  name: string;
+  shortName: string;
+  description: string;
+  structureFocus: string;
+  pacing: string;
+}
+
 const COLORS = {
   ink: '#0f172a',
   muted: '#64748b',
@@ -100,6 +110,37 @@ const getAIStatus = () => {
   const key = getDeepSeekApiKey();
   return key && key.trim().length > 0 ? 'enabled' : 'disabled';
 };
+
+const ADAPTATION_TARGETS: AdaptationTarget[] = [
+  {
+    id: 'film_short',
+    name: '影视短片',
+    shortName: '短片',
+    description: '突出单线冲突、可拍摄动作和清晰转折。',
+    structureFocus: '单线三幕式，场景应服务一个核心冲突',
+    pacing: '紧凑，减少旁支铺陈',
+  },
+  {
+    id: 'web_series',
+    name: '短剧分集',
+    shortName: '短剧',
+    description: '强调高频钩子、人物关系推进和分场悬念。',
+    structureFocus: '分集钩子，每章尽量形成可追看的场景推进',
+    pacing: '快节奏，场景结尾保留悬念',
+  },
+  {
+    id: 'stage_play',
+    name: '舞台剧',
+    shortName: '舞台',
+    description: '更重视对白、场面调度和同一空间内的戏剧冲突。',
+    structureFocus: '舞台空间与对白驱动，动作需可被演员表演',
+    pacing: '稳健，允许更长对白和场面调度',
+  },
+];
+
+const DEFAULT_ADAPTATION_TARGET = ADAPTATION_TARGETS[0];
+
+const getAdaptationTarget = (id: AdaptationTargetId) => ADAPTATION_TARGETS.find((target) => target.id === id) ?? DEFAULT_ADAPTATION_TARGET;
 
 const callDeepSeek = async (systemPrompt: string, userPrompt: string): Promise<string> => {
   const apiKey = getDeepSeekApiKey();
@@ -203,10 +244,15 @@ interface AISceneEnrichment {
   suggested_dialogue: string[];
 }
 
-const aiEnrichScene = async (chapter: NovelChapter): Promise<AISceneEnrichment> => {
+const aiEnrichScene = async (chapter: NovelChapter, target: AdaptationTarget): Promise<AISceneEnrichment> => {
   const content = chapter.content.slice(0, 3000);
 
   const systemPrompt = `你是剧本顾问，负责将小说章节转换为剧本场景卡片。
+
+当前改编目标：
+- 类型：${target.name}
+- 结构重点：${target.structureFocus}
+- 节奏要求：${target.pacing}
 
 请分析以下文本，输出 JSON：
 
@@ -225,6 +271,7 @@ const aiEnrichScene = async (chapter: NovelChapter): Promise<AISceneEnrichment> 
 要求：
 - beats 输出 3-5 个节拍，每个节拍描述一个具体的戏剧动作或转折
 - summary 要突出冲突和张力
+- 场景设计需要贴合当前改编目标，不要输出泛泛的小说摘要
 - conflict、dramatic_purpose、suggested_dialogue 可以基于原文合理推理，但不要伪称为原文直接出现
 - 语言使用流畅中文
 
@@ -455,7 +502,7 @@ const extractCharacters = (chapters: NovelChapter[]) => {
 const inferLocation = (content: string) => /地下室|密室|书店|钟楼|门口|房间|街道|山谷|城门|屋内|庭院/.exec(content)?.[0] ?? '待定场景';
 const inferTime = (content: string) => /清晨|早晨|雨夜|深夜|夜晚|黄昏|午后|傍晚|黎明/.exec(content)?.[0] ?? '待定时间';
 
-const convertNovelToScreenplayYaml = (text: string, characterOverrides?: CharacterInput[]) => {
+const convertNovelToScreenplayYaml = (text: string, target: AdaptationTarget, characterOverrides?: CharacterInput[]) => {
   const chapters = splitNovelChapters(text);
   if (chapters.length < 3) {
     throw new Error(`当前识别到 ${chapters.length} 个章节，请至少导入或粘贴 3 个章节。`);
@@ -493,6 +540,9 @@ const convertNovelToScreenplayYaml = (text: string, characterOverrides?: Charact
     'project:',
     '  title: "小说改编剧本初稿"',
     '  source_type: "novel"',
+    `  target_format: ${yamlScalar(target.name)}`,
+    `  structure_focus: ${yamlScalar(target.structureFocus)}`,
+    `  pacing: ${yamlScalar(target.pacing)}`,
     `  chapter_count: ${chapters.length}`,
     '  logline: "由小说章节自动提炼出的可编辑剧本初稿。"',
     'characters:',
@@ -523,6 +573,7 @@ const convertNovelToScreenplayYaml = (text: string, characterOverrides?: Charact
     ].join('\n')),
     'adaptation_notes:',
     '  - "本稿为浏览器本地启发式转换结果，不调用外部接口。"',
+    `  - "当前改编目标：${target.name}。${target.description}"`,
     '  - "建议作者继续补充人物动机、场景调度和对白节奏。"',
     'review_checklist:',
     '  - id: "review_chapters"',
@@ -564,10 +615,12 @@ function App() {
   const [isDragging, setIsDragging] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiCharacters, setAiCharacters] = useState<CharacterInput[] | null>(null);
+  const [adaptationTargetId, setAdaptationTargetId] = useState<AdaptationTargetId>(DEFAULT_ADAPTATION_TARGET.id);
   const [generationStats, setGenerationStats] = useState<GenerationStats>(() => createEmptyGenerationStats());
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const aiAvailable = getAIStatus() === 'enabled';
+  const adaptationTarget = useMemo(() => getAdaptationTarget(adaptationTargetId), [adaptationTargetId]);
 
   const chapters = useMemo(() => splitNovelChapters(novelInput), [novelInput]);
   const canContinue = chapters.length >= 3;
@@ -710,6 +763,11 @@ function App() {
         passed: sceneCount >= 3 && sceneCount === chapters.length,
       },
       {
+        label: '改编目标',
+        detail: screenplayYaml.includes('target_format:') ? adaptationTarget.name : '待写入',
+        passed: screenplayYaml.includes('target_format:'),
+      },
+      {
         label: '动作节拍',
         detail: `${beatCount} 条节拍`,
         passed: beatCount >= Math.max(chapters.length, 1),
@@ -740,7 +798,7 @@ function App() {
         passed: screenplayYaml.includes('review_checklist:'),
       },
     ];
-  }, [chapters.length, generationStats.mode, screenplayYaml]);
+  }, [adaptationTarget.name, chapters.length, generationStats.mode, screenplayYaml]);
 
   const adaptationReviewChecklist = useMemo<ReviewChecklistItem[]>(() => {
     const hasAiInference = screenplayYaml.includes('ai_inference:');
@@ -950,7 +1008,7 @@ function App() {
         for (const [index, chapter] of chapters.entries()) {
           setStatus(`AI 正在分析场景 ${index + 1}/${chapters.length}...`);
           try {
-            const enrichment = await aiEnrichScene(chapter);
+            const enrichment = await aiEnrichScene(chapter, adaptationTarget);
             enrichedScenes.push(enrichment);
             aiSceneCount += 1;
           } catch {
@@ -1022,6 +1080,9 @@ function App() {
           'project:',
           '  title: "小说改编剧本初稿（AI 增强）"',
           '  source_type: "novel"',
+          `  target_format: ${yamlScalar(adaptationTarget.name)}`,
+          `  structure_focus: ${yamlScalar(adaptationTarget.structureFocus)}`,
+          `  pacing: ${yamlScalar(adaptationTarget.pacing)}`,
           `  chapter_count: ${chapters.length}`,
           `  logline: "由 DeepSeek AI 分析小说章节后自动提炼的剧本初稿，建议作者继续打磨。"`,
           'characters:',
@@ -1067,6 +1128,7 @@ function App() {
           ].join('\n')),
           'adaptation_notes:',
           '  - "本稿由 DeepSeek AI 辅助生成，人物提取与场景分析均经 AI 处理。"',
+          `  - "当前改编目标：${adaptationTarget.name}。${adaptationTarget.description}"`,
           `  - "AI 场景分析完成 ${aiSceneCount}/${chapters.length} 章，降级 ${fallbackSceneCount} 章。"`,
           '  - "建议作者继续补充人物动机、场景调度和对白节奏。"',
           '  - "AI 建议可能有误，请以作者判断为准。"',
@@ -1090,7 +1152,7 @@ function App() {
         ].join('\n');
       } else {
         // 无 AI：回退到纯本地启发式
-        yaml = convertNovelToScreenplayYaml(novelInput, charactersForYaml);
+        yaml = convertNovelToScreenplayYaml(novelInput, adaptationTarget, charactersForYaml);
         setGenerationStats({
           mode: 'local',
           totalScenes: chapters.length,
@@ -1173,6 +1235,29 @@ function App() {
               <div className="paste-guide-icon">⌘</div>
               <div className="upload-title">复制粘贴</div>
               <div className="upload-hint">把小说正文粘贴到右侧输入框。建议保留章节标题，便于后续确认。</div>
+            </div>
+            <div className="target-selector">
+              <div className="target-selector-head">
+                <span>改编目标</span>
+                <strong>{adaptationTarget.shortName}</strong>
+              </div>
+              <div className="target-options">
+                {ADAPTATION_TARGETS.map((target) => (
+                  <button
+                    key={target.id}
+                    type="button"
+                    className={`target-option${adaptationTargetId === target.id ? ' target-option--active' : ''}`}
+                    onClick={() => {
+                      setAdaptationTargetId(target.id);
+                      setScreenplayYaml('');
+                      setGenerationStats(createEmptyGenerationStats());
+                    }}
+                  >
+                    <span>{target.name}</span>
+                    <small>{target.description}</small>
+                  </button>
+                ))}
+              </div>
             </div>
             {/* Fix: reset input.value after each selection so that re-selecting the same
                 file triggers onChange again (browsers suppress the event otherwise) */}
@@ -1454,6 +1539,7 @@ function App() {
               ['章节数量', `${chapters.length} / 至少 3 章`, canContinue],
               ['人物候选', `${effectiveCharacters.length} 个`, effectiveCharacters.length > 0],
               ['草案场景', `${draftScenes.length} 个`, draftScenes.length > 0],
+              ['改编目标', adaptationTarget.shortName, true],
               ['生成模式', generationStats.mode === 'idle' ? '待生成' : generationStats.mode === 'local' ? '本地' : generationStats.mode === 'ai' ? 'AI' : '混合', generationStats.mode !== 'idle'],
               ['YAML 初稿', screenplayYaml ? '已生成' : '未生成', Boolean(screenplayYaml)],
             ].map(([label, value, passed]) => (
