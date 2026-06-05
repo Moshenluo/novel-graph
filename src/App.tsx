@@ -26,6 +26,17 @@ interface CharacterInput {
   role?: string;
 }
 
+type GenerationMode = 'idle' | 'local' | 'ai' | 'mixed';
+type CharacterSource = 'none' | 'local' | 'ai';
+
+interface GenerationStats {
+  mode: GenerationMode;
+  totalScenes: number;
+  aiScenes: number;
+  fallbackScenes: number;
+  characterSource: CharacterSource;
+}
+
 const COLORS = {
   ink: '#0f172a',
   muted: '#64748b',
@@ -45,6 +56,14 @@ const COLORS = {
 
 const getDeepSeekApiKey = () => import.meta.env.VITE_DEEPSEEK_API_KEY?.trim() || '';
 const getDeepSeekBaseUrl = () => import.meta.env.VITE_DEEPSEEK_BASE_URL || 'https://api.deepseek.com';
+
+const createEmptyGenerationStats = (): GenerationStats => ({
+  mode: 'idle',
+  totalScenes: 0,
+  aiScenes: 0,
+  fallbackScenes: 0,
+  characterSource: 'none',
+});
 
 const getAIStatus = () => {
   const key = getDeepSeekApiKey();
@@ -461,6 +480,7 @@ function App() {
   const [isDragging, setIsDragging] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiCharacters, setAiCharacters] = useState<{ name: string; role: string }[] | null>(null);
+  const [generationStats, setGenerationStats] = useState<GenerationStats>(() => createEmptyGenerationStats());
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const aiAvailable = getAIStatus() === 'enabled';
@@ -524,14 +544,29 @@ function App() {
 
   const conversionDiagnostics = useMemo(() => {
     const dialogueCount = draftScenes.reduce((sum, scene) => sum + scene.dialogueCount, 0);
+    const modeLabel: Record<GenerationMode, string> = {
+      idle: '待生成',
+      local: '本地生成',
+      ai: 'AI 增强',
+      mixed: '混合降级',
+    };
+    const characterSourceLabel: Record<CharacterSource, string> = {
+      none: '待确认',
+      local: '本地候选',
+      ai: 'AI 提取',
+    };
     return [
       { label: '章节输入', value: `${chapters.length} 章`, ok: canContinue },
       { label: '人物候选', value: `${effectiveCharacters.length} 个`, ok: effectiveCharacters.length > 0 },
       { label: '草案场景', value: `${draftScenes.length} 个`, ok: draftScenes.length === chapters.length && draftScenes.length >= 3 },
       { label: '对白线索', value: `${dialogueCount} 条`, ok: dialogueCount > 0 },
+      { label: '生成模式', value: modeLabel[generationStats.mode], ok: generationStats.mode !== 'idle' },
+      { label: '人物来源', value: characterSourceLabel[generationStats.characterSource], ok: generationStats.characterSource !== 'none' },
+      { label: 'AI 场景', value: `${generationStats.aiScenes}/${generationStats.totalScenes || chapters.length}`, ok: generationStats.mode === 'ai' || generationStats.aiScenes > 0 },
+      { label: '降级场景', value: `${generationStats.fallbackScenes} 个`, ok: generationStats.fallbackScenes === 0 },
       { label: 'YAML 状态', value: screenplayYaml ? '已生成' : '待生成', ok: Boolean(screenplayYaml) },
     ];
-  }, [canContinue, chapters.length, draftScenes, effectiveCharacters.length, screenplayYaml]);
+  }, [canContinue, chapters.length, draftScenes, effectiveCharacters.length, generationStats, screenplayYaml]);
 
   // AI 人物提取：章节变化时自动触发
   const aiRunRef = useRef<string>('');
@@ -590,6 +625,7 @@ function App() {
       setScreenplayYaml('');
       setImportedFileName(file.name);
       setAiCharacters(null);
+      setGenerationStats(createEmptyGenerationStats());
       aiRunRef.current = '';
       setStatus(`已导入：${file.name}`);
       setActiveStep(1);
@@ -625,25 +661,51 @@ function App() {
 
     try {
       let yaml: string;
+      let finalFallbackSceneCount = 0;
+      setGenerationStats({
+        mode: aiAvailable ? 'ai' : 'local',
+        totalScenes: chapters.length,
+        aiScenes: 0,
+        fallbackScenes: 0,
+        characterSource: 'none',
+      });
       const aiCharacterOverride = aiAvailable ? await ensureAICharacters() : null;
       const charactersForYaml = aiCharacterOverride && aiCharacterOverride.length > 0 ? aiCharacterOverride : effectiveCharacters;
+      const characterSource: CharacterSource = aiCharacterOverride && aiCharacterOverride.length > 0
+        ? 'ai'
+        : effectiveCharacters.length > 0 ? 'local' : 'none';
+      setGenerationStats((current) => ({ ...current, characterSource }));
 
       if (aiAvailable && chapters.length >= 3) {
-        // AI 增强模式：逐章丰富
-        const enrichedScenes = await Promise.all(
-          chapters.map(async (chapter) => {
-            try {
-              return await aiEnrichScene(chapter);
-            } catch {
-              return {
-                location: inferLocation(chapter.content),
-                time: inferTime(chapter.content),
-                summary: compactText(chapter.content.split(/[。！？!?]/).filter(Boolean).slice(0, 2).join('。'), 120),
-                beats: chapter.content.split(/[。！？!?]/).filter(Boolean).slice(0, 5).map((s) => compactText(s.trim(), 110)),
-              };
-            }
-          }),
-        );
+        // AI 增强模式：逐章丰富，保留进度和降级计数，避免生成过程变成黑盒。
+        const enrichedScenes: AISceneEnrichment[] = [];
+        let aiSceneCount = 0;
+        let fallbackSceneCount = 0;
+
+        for (const [index, chapter] of chapters.entries()) {
+          setStatus(`AI 正在分析场景 ${index + 1}/${chapters.length}...`);
+          try {
+            const enrichment = await aiEnrichScene(chapter);
+            enrichedScenes.push(enrichment);
+            aiSceneCount += 1;
+          } catch {
+            fallbackSceneCount += 1;
+            enrichedScenes.push({
+              location: inferLocation(chapter.content),
+              time: inferTime(chapter.content),
+              summary: compactText(chapter.content.split(/[。！？!?]/).filter(Boolean).slice(0, 2).join('。'), 120),
+              beats: chapter.content.split(/[。！？!?]/).filter(Boolean).slice(0, 5).map((s) => compactText(s.trim(), 110)),
+            });
+          }
+          setGenerationStats({
+            mode: fallbackSceneCount > 0 ? 'mixed' : 'ai',
+            totalScenes: chapters.length,
+            aiScenes: aiSceneCount,
+            fallbackScenes: fallbackSceneCount,
+            characterSource,
+          });
+        }
+        finalFallbackSceneCount = fallbackSceneCount;
 
         const characters = toScreenplayCharacters(charactersForYaml);
         const scenes = chapters.map((chapter, index) => {
@@ -714,16 +776,24 @@ function App() {
           ].join('\n')),
           'adaptation_notes:',
           '  - "本稿由 DeepSeek AI 辅助生成，人物提取与场景分析均经 AI 处理。"',
+          `  - "AI 场景分析完成 ${aiSceneCount}/${chapters.length} 章，降级 ${fallbackSceneCount} 章。"`,
           '  - "建议作者继续补充人物动机、场景调度和对白节奏。"',
           '  - "AI 建议可能有误，请以作者判断为准。"',
         ].join('\n');
       } else {
         // 无 AI：回退到纯本地启发式
         yaml = convertNovelToScreenplayYaml(novelInput, charactersForYaml);
+        setGenerationStats({
+          mode: 'local',
+          totalScenes: chapters.length,
+          aiScenes: 0,
+          fallbackScenes: 0,
+          characterSource,
+        });
       }
 
       setScreenplayYaml(yaml);
-      setStatus(aiAvailable ? 'AI 增强 YAML 已生成。' : '已生成剧本 YAML 初稿。');
+      setStatus(aiAvailable ? `AI 增强 YAML 已生成，${finalFallbackSceneCount > 0 ? '部分场景已降级。' : '全部场景分析完成。'}` : '已生成剧本 YAML 初稿。');
       return yaml;
     } catch (genError) {
       setScreenplayYaml('');
@@ -815,7 +885,7 @@ function App() {
               <label style={{ fontSize: 16, fontWeight: 950 }}>小说正文</label>
               <span style={{ color: COLORS.muted, fontSize: 13 }}>识别章节：{chapters.length}</span>
             </div>
-            <textarea value={novelInput} onChange={(event) => { setNovelInput(event.target.value); setScreenplayYaml(''); setError(''); setImportedFileName(''); setAiCharacters(null); aiRunRef.current = ''; }} placeholder="在这里粘贴小说文本。请至少包含 3 个章节，例如：第一章、第二章、第三章。" style={{ width: '100%', minHeight: 500, padding: 20, border: `2px solid ${error ? COLORS.danger : COLORS.line}`, borderRadius: 14, resize: 'vertical', fontSize: 15, lineHeight: 1.75, fontFamily: 'Consolas, Menlo, monospace', color: COLORS.ink, background: '#f8fafc' }} />
+            <textarea value={novelInput} onChange={(event) => { setNovelInput(event.target.value); setScreenplayYaml(''); setError(''); setImportedFileName(''); setAiCharacters(null); setGenerationStats(createEmptyGenerationStats()); aiRunRef.current = ''; }} placeholder="在这里粘贴小说文本。请至少包含 3 个章节，例如：第一章、第二章、第三章。" style={{ width: '100%', minHeight: 500, padding: 20, border: `2px solid ${error ? COLORS.danger : COLORS.line}`, borderRadius: 14, resize: 'vertical', fontSize: 15, lineHeight: 1.75, fontFamily: 'Consolas, Menlo, monospace', color: COLORS.ink, background: '#f8fafc' }} />
           </div>
         </div>
       );
@@ -917,7 +987,7 @@ function App() {
     <div style={{ minHeight: '100vh', background: 'var(--cream)', color: 'var(--ink)' }}>
       <header className="app-header">
         <div className="header-inner">
-        <a className="header-brand" href="#" onClick={(e) => { e.preventDefault(); setActiveStep(0); setNovelInput(''); setScreenplayYaml(''); setStatus(''); setError(''); setAiCharacters(null); aiRunRef.current = ''; }}>
+        <a className="header-brand" href="#" onClick={(e) => { e.preventDefault(); setActiveStep(0); setNovelInput(''); setScreenplayYaml(''); setStatus(''); setError(''); setAiCharacters(null); setGenerationStats(createEmptyGenerationStats()); aiRunRef.current = ''; }}>
           <div className="header-logo">🎬</div>
           <div>
             <div className="header-title"> novel-graph</div>
@@ -961,6 +1031,7 @@ function App() {
               ['章节数量', `${chapters.length} / 至少 3 章`, canContinue],
               ['人物候选', `${effectiveCharacters.length} 个`, effectiveCharacters.length > 0],
               ['草案场景', `${draftScenes.length} 个`, draftScenes.length > 0],
+              ['生成模式', generationStats.mode === 'idle' ? '待生成' : generationStats.mode === 'local' ? '本地' : generationStats.mode === 'ai' ? 'AI' : '混合', generationStats.mode !== 'idle'],
               ['YAML 初稿', screenplayYaml ? '已生成' : '未生成', Boolean(screenplayYaml)],
             ].map(([label, value, passed]) => (
               <div key={String(label)} className="status-row">
@@ -989,7 +1060,7 @@ function App() {
               </div>
               <div style={{ display: 'flex', gap: 10 }}>
                 {activeStep > 0 && <button className="btn btn-ghost btn-sm" onClick={() => setActiveStep((step) => Math.max(0, step - 1))}>上一步</button>}
-                <button className="btn btn-ghost btn-sm" onClick={() => { setNovelInput(''); setScreenplayYaml(''); setStatus(''); setError(''); setImportedFileName(''); setAiCharacters(null); aiRunRef.current = ''; setActiveStep(0); }}>重置</button>
+                <button className="btn btn-ghost btn-sm" onClick={() => { setNovelInput(''); setScreenplayYaml(''); setStatus(''); setError(''); setImportedFileName(''); setAiCharacters(null); setGenerationStats(createEmptyGenerationStats()); aiRunRef.current = ''; setActiveStep(0); }}>重置</button>
                 <button className="btn btn-primary" onClick={activeStep === 3 ? generateYaml : goNext}>{activeStep === 3 ? (aiAvailable ? 'AI 增强重新生成' : '重新生成 YAML') : activeStep === 2 ? (aiAvailable ? 'AI 生成 YAML' : '生成 YAML') : '下一步'}</button>
               </div>
             </div>
