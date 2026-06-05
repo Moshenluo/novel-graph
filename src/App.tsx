@@ -564,7 +564,7 @@ function App() {
 
   const characterPanelLabel = characterPanelMode === 'checking'
     ? 'AI 校对中'
-    : characterPanelMode === 'ai' ? 'AI 已校对' : '本地候选';
+    : characterPanelMode === 'ai' ? 'AI 已校对' : '规则初筛';
 
   const graph = useMemo(() => {
     // 图谱展示候选人物在同一章节内共同出现的线索。
@@ -650,7 +650,7 @@ function App() {
     };
     const characterSourceLabel: Record<CharacterSource, string> = {
       none: '待确认',
-      local: '本地候选',
+      local: '规则初筛',
       ai: 'AI 提取',
     };
     return [
@@ -1204,10 +1204,10 @@ function App() {
             <div className={`character-graph-card character-graph-card--${characterPanelMode}`}>
               <div style={{ color: COLORS.muted, fontSize: 13, lineHeight: 1.7 }}>
                 {characterPanelMode === 'checking'
-                  ? '当前先展示本地候选，AI 正在校对人物名单，完成后会平滑更新图谱。'
+                  ? '当前先展示上传文本的规则初筛结果，AI 正在校对人物名单，完成后会平滑更新图谱。'
                   : characterPanelMode === 'ai'
                     ? '图谱基于 AI 校对后的人物候选展示同章出现线索，仍需作者最终确认。'
-                    : '图谱展示本地人名候选和同章出现线索，不等同于人工确认的角色设定。'}
+                    : '图谱展示上传文本的规则初筛人名和同章出现线索，不等同于人工确认的角色设定。'}
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8, marginTop: 14 }}>
                 {[
