@@ -47,6 +47,10 @@ characters:
     name: "林秋"
     role: "protagonist"
     motivation: "待作者补充"
+    arc: "待作者补充"
+    evidence: "待作者核对原文依据"
+    inference_source: "ai_inferred"
+    needs_author_review: true
 ```
 
 | 字段 | 类型 | 说明 |
@@ -55,6 +59,10 @@ characters:
 | `name` | string | 人物姓名。 |
 | `role` | string | 人物功能，如 `protagonist`、`supporting`、`antagonist`。 |
 | `motivation` | string | 人物动机，自动稿可先保留待补充项。 |
+| `arc` | string | 人物弧光，AI 模式下可给出改编推理。 |
+| `evidence` | string | 角色识别或推理依据，便于作者核对原文。 |
+| `inference_source` | string | 推理来源，如 `ai_inferred`。 |
+| `needs_author_review` | boolean | 是否需要作者审核，AI 推理字段应为 `true`。 |
 
 设计原因：剧本创作需要持续追踪人物动机和功能。单独人物表可以避免每个场景重复描述角色，也方便未来与现有"小说智能图谱"的人物节点联动。
 
@@ -68,6 +76,13 @@ scenes:
     location: "书店"
     time: "雨夜"
     summary: "林秋在旧书店收到沈砚带来的神秘来信。"
+    ai_inference:
+      source: "ai_inferred"
+      needs_author_review: true
+      conflict: "林秋想回避父亲失踪的真相，但来信迫使他重新面对过去。"
+      dramatic_purpose: "引出主线悬念，并推动主角踏上调查。"
+      suggested_dialogue:
+        - "如果这封信是真的，我就再也不能装作什么都没发生。"
     beats:
       - id: "beat_1_1"
         action: "雨水敲打旧书店玻璃"
@@ -88,6 +103,7 @@ scenes:
 | `location` | string | 场景地点，可由作者继续精修为内景/外景。 |
 | `time` | string | 场景时间，如清晨、夜晚、黄昏。 |
 | `summary` | string | 场景摘要，用于快速浏览。 |
+| `ai_inference` | object | AI 基于原文理解补充的冲突、戏剧目的和建议对白。 |
 | `beats` | array | 动作节拍，按事件推进拆分。 |
 | `dialogue` | array | 对白列表。 |
 | `revision_notes` | array | 二次创作提醒。 |
@@ -125,6 +141,7 @@ scenes:
 3. 按场景组织主体：符合剧本创作和拍摄排练的实际工作流。
 4. 保留 `source_chapter`：保证小说原文和剧本初稿之间可追溯，便于检查改编遗漏。
 5. 加入 `revision_notes`：自动生成结果必然粗糙，Schema 主动把"待打磨"变成工作流的一部分。
+6. 标记 AI 推理字段：人物动机、弧光、场景冲突和建议对白常常需要超出原文直述进行改编判断，因此使用 `inference_source`、`ai_inference.source` 和 `needs_author_review` 明确提醒作者审核，避免把 AI 推理误当作原文事实。
 
 ## 支持的章节识别格式
 

@@ -19,11 +19,17 @@ interface ScreenplayCharacter {
   id: string;
   name: string;
   role: CharacterRole;
+  motivation?: string;
+  arc?: string;
+  evidence?: string;
 }
 
 interface CharacterInput {
   name: string;
   role?: string;
+  motivation?: string;
+  arc?: string;
+  evidence?: string;
 }
 
 type GenerationMode = 'idle' | 'local' | 'ai' | 'mixed';
@@ -124,6 +130,8 @@ interface AICharacter {
   name: string;
   role: string;
   evidence: string;
+  motivation?: string;
+  arc?: string;
 }
 
 const aiExtractCharacters = async (chapters: NovelChapter[]): Promise<AICharacter[]> => {
@@ -140,11 +148,11 @@ const aiExtractCharacters = async (chapters: NovelChapter[]): Promise<AICharacte
    - 称呼/绰号/代号（如"狂人"、"孔乙己"、"掌柜"、"赵太爷"、"大哥"）
    - 重复出现的职称代称，前提是它们指向具体个人
 2. 不要提取：地名、机构名、物品名、泛指群体（如"众人"、"大家"）
-3. 对每个角色输出：name（原文中的称呼）、role（主角protagonist/重要配角major_supporting/配角supporting/龙套minor）、evidence（一句原文证据，说明你为什么认为这是角色）
+3. 对每个角色输出：name（原文中的称呼）、role（主角protagonist/重要配角major_supporting/配角supporting/龙套minor）、evidence（一句原文证据，说明你为什么认为这是角色）、motivation（基于文本推理的人物动机）、arc（基于文本推理的人物弧光）
 4. 按重要程度从高到低排列
 
 输出纯 JSON 数组（不要带 markdown 代码块标记）：
-[{"name":"狂人","role":"protagonist","evidence":"...","frequency":15}]`;
+[{"name":"狂人","role":"protagonist","evidence":"...","motivation":"...","arc":"...","frequency":15}]`;
 
   const result = await callDeepSeek(systemPrompt, truncatedText);
 
@@ -177,7 +185,10 @@ interface AISceneEnrichment {
   location: string;
   time: string;
   summary: string;
+  conflict: string;
+  dramatic_purpose: string;
   beats: string[];
+  suggested_dialogue: string[];
 }
 
 const aiEnrichScene = async (chapter: NovelChapter): Promise<AISceneEnrichment> => {
@@ -191,12 +202,16 @@ const aiEnrichScene = async (chapter: NovelChapter): Promise<AISceneEnrichment> 
   "location": "场景地点（具体描述，如"江南小城的石板街道"而非"街道"）",
   "time": "时间设定（如"深秋夜晚"、"暮春清晨"）",
   "summary": "场景摘要（2-3句话概括这个场景发生了什么，聚焦戏剧性冲突）",
-  "beats": ["动作节拍1：人物做什么", "动作节拍2", "动作节拍3", "动作节拍4", "动作节拍5"]
+  "conflict": "本场景的核心冲突，允许基于原文进行合理改编推理",
+  "dramatic_purpose": "本场景在剧本结构中的作用，例如引出危机、推进关系、制造悬念",
+  "beats": ["动作节拍1：人物做什么", "动作节拍2", "动作节拍3", "动作节拍4", "动作节拍5"],
+  "suggested_dialogue": ["可选新增对白建议1", "可选新增对白建议2"]
 }
 
 要求：
 - beats 输出 3-5 个节拍，每个节拍描述一个具体的戏剧动作或转折
 - summary 要突出冲突和张力
+- conflict、dramatic_purpose、suggested_dialogue 可以基于原文合理推理，但不要伪称为原文直接出现
 - 语言使用流畅中文
 
 输出纯 JSON，不要包裹在 markdown 代码块里。`;
@@ -207,13 +222,26 @@ const aiEnrichScene = async (chapter: NovelChapter): Promise<AISceneEnrichment> 
   const jsonStr = jsonMatch ? jsonMatch[1].trim() : result.trim();
 
   try {
-    return JSON.parse(jsonStr);
+    const parsed = JSON.parse(jsonStr);
+    const fallbackSentences = chapter.content.split(/[。！？!?]/).filter(Boolean).slice(0, 5).map((s) => compactText(s.trim(), 110));
+    return {
+      location: parsed.location || inferLocation(chapter.content),
+      time: parsed.time || inferTime(chapter.content),
+      summary: parsed.summary || compactText(chapter.content, 120),
+      conflict: parsed.conflict || 'AI 未明确给出冲突，待作者核对',
+      dramatic_purpose: parsed.dramatic_purpose || 'AI 未明确给出戏剧目的，待作者核对',
+      beats: Array.isArray(parsed.beats) && parsed.beats.length > 0 ? parsed.beats : fallbackSentences,
+      suggested_dialogue: Array.isArray(parsed.suggested_dialogue) ? parsed.suggested_dialogue : [],
+    };
   } catch {
     return {
       location: inferLocation(chapter.content),
       time: inferTime(chapter.content),
       summary: `待AI分析：${compactText(chapter.content, 120)}`,
+      conflict: '待作者根据原文补充场景冲突',
+      dramatic_purpose: '待作者确认本场景在剧本结构中的作用',
       beats: chapter.content.split(/[。！？!?]/).filter(Boolean).slice(0, 5).map((s) => compactText(s.trim(), 110)),
+      suggested_dialogue: [],
     };
   }
 };
@@ -338,6 +366,9 @@ const toScreenplayCharacters = (characters: CharacterInput[]): ScreenplayCharact
       id: `char_${String(normalized.length + 1).padStart(2, '0')}`,
       name,
       role: normalizeCharacterRole(character.role),
+      motivation: character.motivation ? compactText(character.motivation, 120) : undefined,
+      arc: character.arc ? compactText(character.arc, 120) : undefined,
+      evidence: character.evidence ? compactText(character.evidence, 120) : undefined,
     });
   }
   return normalized.slice(0, 15);
@@ -495,7 +526,7 @@ function App() {
   const [importedFileName, setImportedFileName] = useState('');
   const [isDragging, setIsDragging] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
-  const [aiCharacters, setAiCharacters] = useState<{ name: string; role: string }[] | null>(null);
+  const [aiCharacters, setAiCharacters] = useState<CharacterInput[] | null>(null);
   const [generationStats, setGenerationStats] = useState<GenerationStats>(() => createEmptyGenerationStats());
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -615,6 +646,7 @@ function App() {
     const characterCount = screenplayYaml.match(/\n\s{2}- id: "char_/g)?.length ?? 0;
     const beatCount = screenplayYaml.match(/\n\s{6}- id: "beat_/g)?.length ?? 0;
     const dialogueCount = screenplayYaml.match(/\n\s{6}- id: "line_/g)?.length ?? 0;
+    const expectsAiInference = generationStats.mode === 'ai' || generationStats.mode === 'mixed';
 
     return [
       {
@@ -643,12 +675,17 @@ function App() {
         passed: dialogueCount > 0,
       },
       {
+        label: 'AI 推理',
+        detail: screenplayYaml.includes('ai_inference:') ? '已标记需审核' : expectsAiInference ? '待写入' : '本地模式不要求',
+        passed: !expectsAiInference || screenplayYaml.includes('ai_inference:'),
+      },
+      {
         label: '打磨说明',
         detail: screenplayYaml.includes('adaptation_notes:') ? '已包含' : '待生成',
         passed: screenplayYaml.includes('adaptation_notes:'),
       },
     ];
-  }, [chapters.length, screenplayYaml]);
+  }, [chapters.length, generationStats.mode, screenplayYaml]);
 
   const chapterReadiness = useMemo<ChapterReadiness[]>(() => chapters.map((chapter) => {
     const sentences = chapter.content.split(/[。！？!?]\s*/).map((item) => item.trim()).filter(Boolean);
@@ -687,7 +724,7 @@ function App() {
     setAiLoading(true);
     aiExtractCharacters(chapters)
       .then((chars) => {
-        setAiCharacters(chars.map((c) => ({ name: c.name, role: c.role })));
+        setAiCharacters(chars.map((c) => ({ name: c.name, role: c.role, motivation: c.motivation, arc: c.arc, evidence: c.evidence })));
         setAiLoading(false);
       })
       .catch((err) => {
@@ -704,7 +741,7 @@ function App() {
     setAiLoading(true);
     try {
       const chars = await aiExtractCharacters(chapters);
-      const normalized = chars.map((c) => ({ name: c.name, role: c.role }));
+      const normalized = chars.map((c) => ({ name: c.name, role: c.role, motivation: c.motivation, arc: c.arc, evidence: c.evidence }));
       setAiCharacters(normalized);
       return normalized;
     } catch (err) {
@@ -802,7 +839,10 @@ function App() {
               location: inferLocation(chapter.content),
               time: inferTime(chapter.content),
               summary: compactText(chapter.content.split(/[。！？!?]/).filter(Boolean).slice(0, 2).join('。'), 120),
+              conflict: 'AI 场景分析失败，待作者根据原文补充冲突',
+              dramatic_purpose: 'AI 场景分析失败，待作者确认戏剧作用',
               beats: chapter.content.split(/[。！？!?]/).filter(Boolean).slice(0, 5).map((s) => compactText(s.trim(), 110)),
+              suggested_dialogue: [],
             });
           }
           setGenerationStats({
@@ -826,6 +866,9 @@ function App() {
             location: enrichment.location,
             time: enrichment.time,
             summary: enrichment.summary,
+            conflict: enrichment.conflict,
+            dramaticPurpose: enrichment.dramatic_purpose,
+            suggestedDialogue: enrichment.suggested_dialogue ?? [],
             beats: enrichment.beats
               .filter((b) => b.trim())
               .map((beat, beatIndex) => ({
@@ -841,7 +884,11 @@ function App() {
             `  - id: "char_${String(ci + 1).padStart(2, '0')}"`,
             `    name: ${yamlScalar(character.name)}`,
             `    role: "${character.role}"`,
-            '    motivation: "待作者补充"',
+            `    motivation: ${yamlScalar(character.motivation ?? 'AI 推理不足，待作者补充')}`,
+            `    arc: ${yamlScalar(character.arc ?? '待作者根据剧本方向补充人物弧光')}`,
+            `    evidence: ${yamlScalar(character.evidence ?? '待作者核对原文依据')}`,
+            '    inference_source: "ai_inferred"',
+            '    needs_author_review: true',
           ].join('\n'))
           : ['  []]'];
 
@@ -862,6 +909,15 @@ function App() {
             `    location: ${yamlScalar(scene.location)}`,
             `    time: ${yamlScalar(scene.time)}`,
             `    summary: ${yamlScalar(scene.summary)}`,
+            '    ai_inference:',
+            '      source: "ai_inferred"',
+            '      needs_author_review: true',
+            `      conflict: ${yamlScalar(scene.conflict)}`,
+            `      dramatic_purpose: ${yamlScalar(scene.dramaticPurpose)}`,
+            '      suggested_dialogue:',
+            ...(scene.suggestedDialogue.length > 0
+              ? scene.suggestedDialogue.slice(0, 3).map((line) => `        - ${yamlScalar(line)}`)
+              : ['        []']),
             '    beats:',
             ...(scene.beats.length > 0
               ? scene.beats.map((beat) => [
