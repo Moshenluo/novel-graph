@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, useCallback } from 'react';
+import { useMemo, useRef, useState, useCallback, useEffect } from 'react';
 import type { DragEvent } from 'react';
 import mammoth from 'mammoth';
 
@@ -38,6 +38,147 @@ const COLORS = {
   accentDark: '#4f46e5',
   success: '#10b981',
   danger: '#ef4444',
+};
+
+/* ------------------------------------------------------------------ */
+/*  AI 增强模块：DeepSeek API 调用                                     */
+/* ------------------------------------------------------------------ */
+
+const getAIStatus = () => {
+  const key = import.meta.env.VITE_DEEPSEEK_API_KEY;
+  return key && key.trim().length > 0 ? 'enabled' : 'disabled';
+};
+
+const callDeepSeek = async (systemPrompt: string, userPrompt: string): Promise<string> => {
+  const apiKey = import.meta.env.VITE_DEEPSEEK_API_KEY;
+  const baseUrl = import.meta.env.VITE_DEEPSEEK_BASE_URL || 'https://api.deepseek.com';
+
+  if (!apiKey || !apiKey.trim()) {
+    throw new Error('未配置 DeepSeek API Key。请在 .env 中设置 VITE_DEEPSEEK_API_KEY。');
+  }
+
+  const response = await fetch(`${baseUrl}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: 'deepseek-chat',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      temperature: 0.3,
+      max_tokens: 4096,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`DeepSeek API 错误 (${response.status})：${errorText.slice(0, 200)}`);
+  }
+
+  const data = await response.json();
+  return data.choices?.[0]?.message?.content ?? '';
+};
+
+interface AICharacter {
+  name: string;
+  role: string;
+  evidence: string;
+}
+
+const aiExtractCharacters = async (chapters: NovelChapter[]): Promise<AICharacter[]> => {
+  const fullText = chapters.map((c) => `【${c.title}】\n${c.content}`).join('\n\n');
+  const truncatedText = fullText.slice(0, 8000);
+
+  const systemPrompt = `你是一个文学分析助手，专精从中文小说中提取人物角色。
+
+请从以下文本中提取所有人物角色名称。
+规则：
+1. 提取所有出现的人物，包括：
+   - 中文姓名（如"赵家的狗"中的"赵"不算，要完整的，如"鲁迅"、"林黛玉"）
+   - 单名或昵称（如"阿Q"、"祥子"）
+   - 称呼/绰号/代号（如"狂人"、"孔乙己"、"掌柜"、"赵太爷"、"大哥"）
+   - 重复出现的职称代称，前提是它们指向具体个人
+2. 不要提取：地名、机构名、物品名、泛指群体（如"众人"、"大家"）
+3. 对每个角色输出：name（原文中的称呼）、role（主角protagonist/重要配角major_supporting/配角supporting/龙套minor）、evidence（一句原文证据，说明你为什么认为这是角色）
+4. 按重要程度从高到低排列
+
+输出纯 JSON 数组（不要带 markdown 代码块标记）：
+[{"name":"狂人","role":"protagonist","evidence":"...","frequency":15}]`;
+
+  const result = await callDeepSeek(systemPrompt, truncatedText);
+
+  // 尝试解析 JSON（AI 可能包裹在 \`\`\`json 里）
+  const jsonMatch = result.match(/```(?:json)?\s*([\s\S]*?)```/) ?? result.match(/(\[[\s\S]*\])/);
+  const jsonStr = jsonMatch ? jsonMatch[1].trim() : result.trim();
+
+  try {
+    const characters: AICharacter[] = JSON.parse(jsonStr);
+    // 去重合并
+    const seen = new Map<string, AICharacter>();
+    for (const c of characters) {
+      if (!c.name || c.name.length < 1) continue;
+      const key = c.name.trim();
+      if (!seen.has(key)) seen.set(key, { ...c, name: key });
+    }
+    return [...seen.values()].slice(0, 15);
+  } catch {
+    // 解析失败，尝试从文本中提取 name 行
+    const names = result.match(/"name"\s*:\s*"([^"]+)"/g);
+    if (!names) throw new Error('AI 人物提取结果解析失败');
+    return names.slice(0, 15).map((n, i) => {
+      const nameMatch = n.match(/"([^"]+)"$/);
+      return { name: nameMatch?.[1] ?? `角色${i + 1}`, role: 'supporting', evidence: '' };
+    });
+  }
+};
+
+interface AISceneEnrichment {
+  location: string;
+  time: string;
+  summary: string;
+  beats: string[];
+}
+
+const aiEnrichScene = async (chapter: NovelChapter): Promise<AISceneEnrichment> => {
+  const content = chapter.content.slice(0, 3000);
+
+  const systemPrompt = `你是剧本顾问，负责将小说章节转换为剧本场景卡片。
+
+请分析以下文本，输出 JSON：
+
+{
+  "location": "场景地点（具体描述，如"江南小城的石板街道"而非"街道"）",
+  "time": "时间设定（如"深秋夜晚"、"暮春清晨"）",
+  "summary": "场景摘要（2-3句话概括这个场景发生了什么，聚焦戏剧性冲突）",
+  "beats": ["动作节拍1：人物做什么", "动作节拍2", "动作节拍3", "动作节拍4", "动作节拍5"]
+}
+
+要求：
+- beats 输出 3-5 个节拍，每个节拍描述一个具体的戏剧动作或转折
+- summary 要突出冲突和张力
+- 语言使用流畅中文
+
+输出纯 JSON，不要包裹在 markdown 代码块里。`;
+
+  const result = await callDeepSeek(systemPrompt, `章节：${chapter.title}\n\n${content}`);
+
+  const jsonMatch = result.match(/```(?:json)?\s*([\s\S]*?)```/) ?? result.match(/(\{[\s\S]*\})/);
+  const jsonStr = jsonMatch ? jsonMatch[1].trim() : result.trim();
+
+  try {
+    return JSON.parse(jsonStr);
+  } catch {
+    return {
+      location: inferLocation(chapter.content),
+      time: inferTime(chapter.content),
+      summary: `待AI分析：${compactText(chapter.content, 120)}`,
+      beats: chapter.content.split(/[。！？!?]/).filter(Boolean).slice(0, 5).map((s) => compactText(s.trim(), 110)),
+    };
+  }
 };
 
 const yamlScalar = (value: string | number | boolean) => {
@@ -116,17 +257,63 @@ const extractQuotedDialogue = (content: string): DialogueLine[] => {
 };
 
 const extractCharacters = (chapters: NovelChapter[]) => {
-  const names = new Map<string, number>();
-  chapters.forEach((chapter) => {
-    for (const match of chapter.content.matchAll(/([\u4e00-\u9fa5]{2,4})(?:说|问|回答|低声说|喊道|说道|笑道|站|看|握|走|发现|找到|决定)/g)) {
-      const name = match[1].replace(/^(清晨|雨水|地下|父亲的|里面|两人|一阵|只有|时候|突然)/, '').trim();
-      if (name.length >= 2 && name.length <= 4) names.set(name, (names.get(name) ?? 0) + 1);
+  // 两阶段策略：先扫描高频人名模式，再补对话提取
+  const nameCount = new Map<string, number>();
+  const fullText = chapters.map((c) => c.content).join('\n');
+
+  // 阶段1：全文中出现的所有 2-3 字中文片段做频率统计
+  const chineseWords = fullText.match(/[\u4e00-\u9fa5]{2,3}/g) ?? [];
+  for (const w of chineseWords) {
+    nameCount.set(w, (nameCount.get(w) ?? 0) + 1);
+  }
+
+  // 阶段2：对话中的人名提取（"XXX说/问/..."）
+  const dialoguePattern = /([\u4e00-\u9fa5]{2,4})\s*(?:说|问|答道|回答|喊道|说道|笑道|低声|高声|大声|冷冷|忽然|突然|又说|便说|却说|乃说)[：:\s]/g;
+  for (const chapter of chapters) {
+    for (const match of chapter.content.matchAll(dialoguePattern)) {
+      const name = match[1].trim();
+      if (name.length >= 2) {
+        nameCount.set(name, (nameCount.get(name) ?? 0) + 5); // 对话发言者加权
+      }
     }
-  });
-  return [...names.entries()]
+  }
+
+  // 阶段3：引号对话提取（"XX道：""XXX说：" 等模式）
+  const quoteSpeakerPattern = /([\u4e00-\u9fa5]{2,4})(?:道|曰|说|问|答)[：:]["\u201c]/g;
+  for (const match of fullText.matchAll(quoteSpeakerPattern)) {
+    const name = match[1].trim();
+    if (name.length >= 2) {
+      nameCount.set(name, (nameCount.get(name) ?? 0) + 5);
+    }
+  }
+
+  // 过滤：排除常见非人名词
+  const stopWords = new Set([
+    '没有', '自己', '他们', '我们', '你们', '她们', '什么', '怎么', '为什么',
+    '可是', '还是', '或者', '虽然', '因为', '所以', '于是', '然而', '但是',
+    '不过', '而且', '并且', '可以', '已经', '这个', '那个', '这样', '那样',
+    '知道', '看见', '听见', '觉得', '以为', '起来', '出来', '过来', '过去',
+    '不是', '就是', '只是', '又是', '也是', '还有', '不能', '不敢', '不曾',
+    '一个', '一些', '一样', '一面', '一声', '一句', '一般', '一切', '一定',
+    '时候', '地方', '上面', '下面', '里面', '外面', '前面', '后面', '旁边',
+    '东西', '事情', '眼睛', '声音', '心里', '今天', '明天', '昨天', '现在',
+    '太阳', '月亮', '先生', '女人', '男人', '孩子', '母亲', '父亲', '兄弟',
+    '从前', '以后', '忽然', '仿佛', '似乎', '便是', '倘若', '果然', '自然',
+    '没有', '一点', '几分', '总须', '我可', '他的', '他说', '我想',
+  ]);
+
+  // 筛选：出现频率 >= 3 且不在停用词列表
+  const candidates = [...nameCount.entries()]
+    .filter(([name, count]) => !stopWords.has(name) && count >= 3)
     .sort((a, b) => b[1] - a[1])
-    .slice(0, 10)
-    .map(([name], index) => ({ id: `char_${index + 1}`, name, role: index === 0 ? 'protagonist' : 'supporting' }));
+    .slice(0, 15);
+
+  // 角色推断：频率最高的为主角
+  return candidates.map(([name], index) => ({
+    id: `char_${index + 1}`,
+    name,
+    role: index === 0 ? 'protagonist' : 'supporting',
+  }));
 };
 
 const buildCharacterGraph = (chapters: NovelChapter[]) => {
@@ -260,11 +447,58 @@ function App() {
   const [error, setError] = useState('');
   const [importedFileName, setImportedFileName] = useState('');
   const [isDragging, setIsDragging] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiCharacters, setAiCharacters] = useState<{ name: string; role: string }[] | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const aiAvailable = getAIStatus() === 'enabled';
+
   const chapters = useMemo(() => splitNovelChapters(novelInput), [novelInput]);
-  const graph = useMemo(() => buildCharacterGraph(chapters), [chapters]);
   const canContinue = chapters.length >= 3;
+
+  // 人物：AI 结果优先，降级到正则
+  const effectiveCharacters = useMemo(() => {
+    if (aiCharacters && aiCharacters.length > 0) return aiCharacters;
+    return extractCharacters(chapters).map((c) => ({ name: c.name, role: c.role }));
+  }, [aiCharacters, chapters]);
+
+  const graph = useMemo(() => {
+    // 使用 buildCharacterGraph 的逻辑，但输入用 effectiveCharacters
+    const characters = effectiveCharacters.map((c, i) => ({
+      id: `char_${i + 1}`,
+      name: c.name,
+      role: c.role,
+      x: 0,
+      y: 0,
+    }));
+    const width = 820;
+    const height = 520;
+    const centerX = width / 2;
+    const centerY = height / 2;
+    const radius = Math.min(width, height) * 0.34;
+    const nodes = characters.map((character, index) => {
+      if (index === 0) return { ...character, x: centerX, y: centerY };
+      const angle = ((index - 1) / Math.max(characters.length - 1, 1)) * Math.PI * 2 - Math.PI / 2;
+      return { ...character, x: centerX + Math.cos(angle) * radius, y: centerY + Math.sin(angle) * radius };
+    });
+    const byName = new Map(nodes.map((node) => [node.name, node]));
+    const edgeMap = new Map<string, { source: string; target: string; count: number }>();
+    chapters.forEach((chapter) => {
+      const present = nodes.filter((node) => chapter.content.includes(node.name)).map((node) => node.name);
+      for (let i = 0; i < present.length; i += 1) {
+        for (let j = i + 1; j < present.length; j += 1) {
+          const source = byName.get(present[i]);
+          const target = byName.get(present[j]);
+          if (!source || !target) continue;
+          const key = [source.id, target.id].sort().join('__');
+          const current = edgeMap.get(key);
+          edgeMap.set(key, current ? { ...current, count: current.count + 1 } : { source: source.id, target: target.id, count: 1 });
+        }
+      }
+    });
+    return { width, height, nodes, edges: [...edgeMap.values()] };
+  }, [effectiveCharacters, chapters]);
+
   const draftScenes = useMemo(() => chapters.map((chapter, index) => {
     const sentences = chapter.content.split(/[。！？!?]\s*/).map((item) => item.trim()).filter(Boolean);
     return {
@@ -275,6 +509,27 @@ function App() {
       dialogueCount: extractQuotedDialogue(chapter.content).length,
     };
   }), [chapters]);
+
+  // AI 人物提取：章节变化时自动触发
+  const aiRunRef = useRef<string>('');
+  useEffect(() => {
+    if (!aiAvailable) return;
+    const key = chapters.map((c) => c.title).join('|');
+    if (key === aiRunRef.current || chapters.length < 3) return;
+    aiRunRef.current = key;
+
+    setAiLoading(true);
+    aiExtractCharacters(chapters)
+      .then((chars) => {
+        setAiCharacters(chars.map((c) => ({ name: c.name, role: c.role })));
+        setAiLoading(false);
+      })
+      .catch((err) => {
+        console.warn('AI 人物提取失败，使用正则降级：', err);
+        setAiLoading(false);
+        setAiCharacters(null);
+      });
+  }, [chapters, aiAvailable]);
 
   const steps = [
     { title: '文本导入', desc: '导入小说文本，识别章节' },
@@ -320,21 +575,129 @@ function App() {
     if (file) handleFileImport(file);
   }, [handleFileImport]);
 
-  const generateYaml = () => {
-    const yaml = convertNovelToScreenplayYaml(novelInput);
-    setScreenplayYaml(yaml);
-    setStatus('已生成剧本 YAML 初稿。');
-    return yaml;
+  const generateYaml = async () => {
+    setError('');
+    setStatus(aiAvailable ? 'AI 正在生成剧本...' : '正在生成剧本...');
+
+    try {
+      let yaml: string;
+
+      if (aiAvailable && chapters.length >= 3) {
+        // AI 增强模式：逐章丰富
+        const enrichedScenes = await Promise.all(
+          chapters.map(async (chapter, index) => {
+            try {
+              return await aiEnrichScene(chapter);
+            } catch {
+              return {
+                location: inferLocation(chapter.content),
+                time: inferTime(chapter.content),
+                summary: compactText(chapter.content.split(/[。！？!?]/).filter(Boolean).slice(0, 2).join('。'), 120),
+                beats: chapter.content.split(/[。！？!?]/).filter(Boolean).slice(0, 5).map((s) => compactText(s.trim(), 110)),
+              };
+            }
+          }),
+        );
+
+        const characters = effectiveCharacters;
+        const scenes = chapters.map((chapter, index) => {
+          const enrichment = enrichedScenes[index]!;
+          const dialogues = extractQuotedDialogue(chapter.content).slice(0, 8);
+          return {
+            id: `scene_${String(index + 1).padStart(2, '0')}`,
+            sourceChapter: chapter.index,
+            title: chapter.title.replace(/^第[一二三四五六七八九十百千万0-9]+章\s*/, '') || chapter.title,
+            location: enrichment.location,
+            time: enrichment.time,
+            summary: enrichment.summary,
+            beats: enrichment.beats
+              .filter((b) => b.trim())
+              .map((beat, beatIndex) => ({
+                id: `beat_${index + 1}_${beatIndex + 1}`,
+                action: compactText(beat.trim(), 110),
+              })),
+            dialogues,
+          };
+        });
+
+        const characterBlock = characters.length > 0
+          ? characters.map((character, ci) => [
+            `  - id: "char_${String(ci + 1).padStart(2, '0')}"`,
+            `    name: ${yamlScalar(character.name)}`,
+            `    role: "${character.role}"`,
+            '    motivation: "待作者补充"',
+          ].join('\n'))
+          : ['  []]'];
+
+        yaml = [
+          'schema_version: "1.0"',
+          'project:',
+          '  title: "小说改编剧本初稿（AI 增强）"',
+          '  source_type: "novel"',
+          `  chapter_count: ${chapters.length}`,
+          `  logline: "由 DeepSeek AI 分析小说章节后自动提炼的剧本初稿，建议作者继续打磨。"`,
+          'characters:',
+          ...characterBlock,
+          'scenes:',
+          ...scenes.map((scene) => [
+            `  - id: "${scene.id}"`,
+            `    source_chapter: ${scene.sourceChapter}`,
+            `    title: ${yamlScalar(scene.title)}`,
+            `    location: ${yamlScalar(scene.location)}`,
+            `    time: ${yamlScalar(scene.time)}`,
+            `    summary: ${yamlScalar(scene.summary)}`,
+            '    beats:',
+            ...(scene.beats.length > 0
+              ? scene.beats.map((beat) => [
+                `      - id: "${beat.id}"`,
+                `        action: ${yamlScalar(beat.action)}`,
+              ].join('\n'))
+              : ['      []]']),
+            '    dialogue:',
+            ...(scene.dialogues.length > 0
+              ? scene.dialogues.map((dialogue, dialogueIndex) => [
+                `      - id: "line_${scene.sourceChapter}_${dialogueIndex + 1}"`,
+                `        speaker: ${yamlScalar(dialogue.speaker)}`,
+                `        text: ${yamlScalar(dialogue.text)}`,
+                '        subtext: "待作者打磨"',
+              ].join('\n'))
+              : ['      []]']),
+            '    revision_notes:',
+            '      - "AI 初稿仅供参考，请检查场景冲突是否足够清晰"',
+            '      - "建议补充镜头调度、人物动作和潜台词"',
+          ].join('\n')),
+          'adaptation_notes:',
+          '  - "本稿由 DeepSeek AI 辅助生成，人物提取与场景分析均经 AI 处理。"',
+          '  - "建议作者继续补充人物动机、场景调度和对白节奏。"',
+          '  - "AI 建议可能有误，请以作者判断为准。"',
+        ].join('\n');
+      } else {
+        // 无 AI：回退到纯本地启发式
+        yaml = convertNovelToScreenplayYaml(novelInput);
+      }
+
+      setScreenplayYaml(yaml);
+      setStatus(aiAvailable ? 'AI 增强 YAML 已生成。' : '已生成剧本 YAML 初稿。');
+      return yaml;
+    } catch (genError) {
+      setScreenplayYaml('');
+      setStatus('');
+      setError(genError instanceof Error ? genError.message : '生成失败，请检查输入。');
+      return '';
+    }
   };
 
-  const goNext = () => {
+  const goNext = async () => {
     try {
       setError('');
       if (activeStep === 0 && !canContinue) {
         setError(`当前识别到 ${chapters.length} 个章节，请先导入或粘贴至少 3 个章节。`);
         return;
       }
-      if (activeStep === 2) generateYaml();
+      if (activeStep === 2) {
+        const result = await generateYaml();
+        if (!result) return;
+      }
       setActiveStep((step) => Math.min(step + 1, steps.length - 1));
     } catch (stepError) {
       setScreenplayYaml('');
@@ -514,7 +877,7 @@ function App() {
           disabled={activeStep < 2 && !canContinue && activeStep !== 0}
           style={activeStep < 2 && !canContinue && activeStep !== 0 ? { background: 'var(--line)', color: '#b0a89c', cursor: 'not-allowed' } : {}}
         >
-          {activeStep === 3 ? '生成 YAML' : activeStep === 2 ? '生成 YAML · 进入导出' : '下一步'}
+          {activeStep === 3 ? (aiAvailable ? 'AI 增强生成 YAML' : '生成 YAML') : activeStep === 2 ? (aiAvailable ? 'AI 生成 YAML · 进入导出' : '生成 YAML · 进入导出') : '下一步'}
         </button>
         </div>
       </header>
@@ -541,8 +904,9 @@ function App() {
           <div className="status-panel">
             <div className="status-panel-title">当前状态</div>
             {[
+              ['AI 状态', aiAvailable ? (aiLoading ? '分析中...' : '🔮 已启用') : '⚠️ 未配置', aiAvailable],
               ['章节数量', `${chapters.length} / 至少 3 章`, canContinue],
-              ['人物候选', `${graph.nodes.length} 个`, graph.nodes.length > 0],
+              ['人物候选', `${effectiveCharacters.length} 个`, effectiveCharacters.length > 0],
               ['草案场景', `${draftScenes.length} 个`, draftScenes.length > 0],
               ['YAML 初稿', screenplayYaml ? '已生成' : '未生成', Boolean(screenplayYaml)],
             ].map(([label, value, passed]) => (
@@ -554,7 +918,9 @@ function App() {
           </div>
 
           <div className="sidebar-note">
-            本工具只在浏览器本地解析文本，不调用外部接口。人物共现只作为参考线索。
+            {aiAvailable
+              ? '🔮 DeepSeek AI 已启用 · 人物提取与场景分析由 AI 辅助，结果仅供参考。'
+              : '配置 VITE_DEEPSEEK_API_KEY 可启用 AI 增强模式，提升人物识别与场景分析精度。'}
           </div>
         </aside>
 
@@ -571,7 +937,7 @@ function App() {
               <div style={{ display: 'flex', gap: 10 }}>
                 {activeStep > 0 && <button className="btn btn-ghost btn-sm" onClick={() => setActiveStep((step) => Math.max(0, step - 1))}>上一步</button>}
                 <button className="btn btn-ghost btn-sm" onClick={() => { setNovelInput(''); setScreenplayYaml(''); setStatus(''); setError(''); setImportedFileName(''); setActiveStep(0); }}>重置</button>
-                <button className="btn btn-primary" onClick={activeStep === 3 ? generateYaml : goNext}>{activeStep === 3 ? '重新生成 YAML' : activeStep === 2 ? '生成 YAML' : '下一步'}</button>
+                <button className="btn btn-primary" onClick={activeStep === 3 ? generateYaml : goNext}>{activeStep === 3 ? (aiAvailable ? 'AI 增强重新生成' : '重新生成 YAML') : activeStep === 2 ? (aiAvailable ? 'AI 生成 YAML' : '生成 YAML') : '下一步'}</button>
               </div>
             </div>
 
