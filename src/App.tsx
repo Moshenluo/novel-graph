@@ -13,18 +13,17 @@ interface DialogueLine {
   text: string;
 }
 
-interface GraphNode {
+type CharacterRole = 'protagonist' | 'major_supporting' | 'supporting' | 'minor';
+
+interface ScreenplayCharacter {
   id: string;
   name: string;
-  role: string;
-  x: number;
-  y: number;
+  role: CharacterRole;
 }
 
-interface GraphEdge {
-  source: string;
-  target: string;
-  count: number;
+interface CharacterInput {
+  name: string;
+  role?: string;
 }
 
 const COLORS = {
@@ -196,7 +195,7 @@ const CHAPTER_PATTERN = new RegExp(
   '(?:第[一二三四五六七八九十百千万零〇\\d]+[章节卷篇集回][^\\n]*)' +
   // 2. Chapter N / Part N / Act N / Scene / Episode（英文），支持罗马数字 + 点 — 覆盖荒野的呼唤
   '|(?:(?:Chapter|Part|Act|Scene|Episode)\\s+[\\dIVXivx]+[^\\n]*)' +
-  // 3. 全角空格前缀 + 单个中文数字独占一行 — 覆盖狂人日记"　　一"
+  // 3. 全角空格前缀 + 单个中文数字独占一行，覆盖狂人日记的独立中文序号
   '|(?:[\u3000\\s]*[一二三四五六七八九十]+[ \\t\u3000]*$)' +
   // 4. 中文数字序号 "一、" "二、" 等独占一行
   '|(?:[一二三四五六七八九十]{1,3}[、。])' +
@@ -247,121 +246,131 @@ const compactText = (value: string, max = 100) => {
   return text.length > max ? `${text.slice(0, max)}...` : text;
 };
 
+const COMMON_CHINESE_SURNAMES = '赵钱孙李周吴郑王冯陈褚卫蒋沈韩杨朱秦尤许何吕施张孔曹严华金魏陶姜戚谢邹喻柏水窦章云苏潘葛奚范彭郎鲁韦昌马苗凤花方俞任袁柳鲍史唐费廉岑薛雷贺倪汤滕殷罗毕郝邬安常乐于时傅皮卞齐康伍余元卜顾孟平黄和穆萧尹姚邵汪祁毛禹狄米贝明臧计伏成戴谈宋庞熊纪舒屈项祝董梁杜阮蓝闵席季麻强贾路娄危江童颜郭梅盛林刁钟徐邱骆高夏蔡田胡凌霍虞万支柯昝管卢莫经房裘缪干解应宗丁宣邓郁单杭洪包诸左石崔吉龚程邢裴陆荣翁荀羊於惠甄曲家封芮羿储靳汲邴糜松井段富巫乌焦巴弓牧隗山谷车侯宓蓬全郗班仰秋仲伊宫宁仇栾暴甘钭厉戎祖武符刘景詹束龙叶幸司韶郜黎蓟薄印宿白怀蒲邰从鄂索咸籍赖卓蔺屠蒙池乔阴郁胥能苍双闻莘党翟谭贡劳逄姬申扶堵冉宰郦雍郤璩桑桂濮牛寿通边扈燕冀浦尚农温别庄晏柴瞿阎充慕连茹习宦艾鱼容向古易慎戈廖庾终暨居衡步都耿满弘匡国文寇广禄阙东欧利师巩聂关荆司马上官欧阳夏侯诸葛闻人东方赫连皇甫尉迟公孙';
+
+const CHARACTER_STOP_WORDS = new Set([
+  '没有', '自己', '他们', '我们', '你们', '她们', '咱们', '别人', '众人', '大家', '人们',
+  '这个', '那个', '这些', '那些', '一种', '一个', '一些', '一样', '一面', '一声', '一句', '一般', '一切', '一定',
+  '什么', '怎么', '为什么', '时候', '地方', '事情', '东西', '眼睛', '声音', '心里', '今天', '明天', '昨天', '现在',
+  '可是', '还是', '或者', '虽然', '因为', '所以', '于是', '然而', '但是', '不过', '而且', '并且',
+  '可以', '已经', '知道', '看见', '听见', '觉得', '以为', '起来', '出来', '过来', '过去',
+  '不是', '就是', '只是', '又是', '也是', '还有', '不能', '不敢', '不曾', '忽然', '仿佛', '似乎',
+  '从前', '以后', '上面', '下面', '里面', '外面', '前面', '后面', '旁边', '太阳', '月亮',
+  '他的', '她的', '我的', '你的', '他们的', '我们的', '你们的', '的人', '人的人', '吃人', '吃人的',
+]);
+
+const CHARACTER_ALIAS_ALLOWLIST = new Set([
+  '阿Q', '孔乙己', '祥子', '狂人', '大哥', '老头子', '掌柜', '赵太爷',
+]);
+
+const normalizeCharacterRole = (role?: string): CharacterRole => {
+  if (role === 'protagonist' || role === 'major_supporting' || role === 'supporting' || role === 'minor') return role;
+  return 'supporting';
+};
+
+const normalizeCharacterName = (value: string) => value
+  .replace(/^[\s"'“”‘’《》【】（）()，,。！？!?:：；;、]+|[\s"'“”‘’《》【】（）()，,。！？!?:：；;、]+$/g, '')
+  .trim();
+
+const isPlausibleCharacterName = (rawName: string, strongEvidence = false) => {
+  const name = normalizeCharacterName(rawName);
+  if (name.length < 2 || name.length > 6) return false;
+  if (CHARACTER_STOP_WORDS.has(name)) return false;
+  if (/的|了|着|过/.test(name)) return false;
+  if (/^[一二三四五六七八九十百千万零〇\d]+$/.test(name)) return false;
+  if (/^[这那哪几什怎为可但并或又还也都很更最再从把被将与和及在向到对给]$/.test(name[0])) return false;
+  if (/(时候|地方|事情|声音|眼睛|心里|东西|文本|章节|场景)$/.test(name)) return false;
+  if (CHARACTER_ALIAS_ALLOWLIST.has(name)) return true;
+
+  const surnamePattern = new RegExp(`^[${COMMON_CHINESE_SURNAMES}][\\u4e00-\\u9fa5]{1,2}$`);
+  const nicknamePattern = /^(?:阿[\u4e00-\u9fa5A-Za-z]{1,2}|老[\u4e00-\u9fa5]{1,2}|小[\u4e00-\u9fa5]{1,2}|[\u4e00-\u9fa5]老[一二三四五六七八九十\d])$/;
+  const titlePattern = /^[\u4e00-\u9fa5]{1,3}(?:哥|嫂|姐|叔|伯|爷|娘|婶|掌柜|太爷|老爷|小姐|姑娘|和尚|道士|师傅|先生|夫人)$/;
+
+  return surnamePattern.test(name) || nicknamePattern.test(name) || titlePattern.test(name) || strongEvidence;
+};
+
+const toScreenplayCharacters = (characters: CharacterInput[]): ScreenplayCharacter[] => {
+  const seen = new Set<string>();
+  const normalized: ScreenplayCharacter[] = [];
+  for (const character of characters) {
+    const name = normalizeCharacterName(character.name);
+    if (!isPlausibleCharacterName(name, true) || seen.has(name)) continue;
+    seen.add(name);
+    normalized.push({
+      id: `char_${String(normalized.length + 1).padStart(2, '0')}`,
+      name,
+      role: normalizeCharacterRole(character.role),
+    });
+  }
+  return normalized.slice(0, 15);
+};
+
 const extractQuotedDialogue = (content: string): DialogueLine[] => {
   const lines: DialogueLine[] = [];
   const pattern = /([\u4e00-\u9fa5A-Za-z]{2,8})\s*(?:说|问|答道|低声说|回答|喊道|说道|笑道)[：:]\s*[""]([^""]+)[""]?/g;
   for (const match of content.matchAll(pattern)) {
-    lines.push({ speaker: match[1], text: match[2].trim() });
+    const speaker = normalizeCharacterName(match[1]);
+    if (isPlausibleCharacterName(speaker, true)) {
+      lines.push({ speaker, text: match[2].trim() });
+    }
   }
   return lines;
 };
 
 const extractCharacters = (chapters: NovelChapter[]) => {
-  // 两阶段策略：先扫描高频人名模式，再补对话提取
-  const nameCount = new Map<string, number>();
   const fullText = chapters.map((c) => c.content).join('\n');
+  const candidates = new Map<string, { score: number; strong: boolean }>();
 
-  // 阶段1：全文中出现的所有 2-3 字中文片段做频率统计
-  const chineseWords = fullText.match(/[\u4e00-\u9fa5]{2,3}/g) ?? [];
-  for (const w of chineseWords) {
-    nameCount.set(w, (nameCount.get(w) ?? 0) + 1);
+  const addCandidate = (rawName: string, score: number, strong = false) => {
+    const name = normalizeCharacterName(rawName);
+    if (!isPlausibleCharacterName(name, strong)) return;
+    const current = candidates.get(name);
+    candidates.set(name, { score: (current?.score ?? 0) + score, strong: Boolean(current?.strong || strong) });
+  };
+
+  const speechVerb = '(?:说|说道|问|答|答道|回答|喊|喊道|叫|叫道|笑道|低声说|高声说|大声说|冷冷地说|喃喃道|叹道|道|曰)';
+  const surnameName = `[${COMMON_CHINESE_SURNAMES}][\\u4e00-\\u9fa5]{1,2}`;
+  const aliasName = '(?:阿[\\u4e00-\\u9fa5A-Za-z]{1,2}|老[\\u4e00-\\u9fa5]{1,2}|小[\\u4e00-\\u9fa5]{1,2}|[\\u4e00-\\u9fa5]老[一二三四五六七八九十\\d]|[\\u4e00-\\u9fa5]{1,3}(?:哥|嫂|姐|叔|伯|爷|娘|婶|掌柜|太爷|老爷|小姐|姑娘|和尚|道士|师傅|先生|夫人)|阿Q|孔乙己|祥子|狂人)';
+  const characterName = `(${surnameName}|${aliasName})`;
+
+  const speakerPattern = new RegExp(`${characterName}\\s*${speechVerb}[：:\\s“"']`, 'g');
+  for (const match of fullText.matchAll(speakerPattern)) {
+    addCandidate(match[1], 10, true);
   }
 
-  // 阶段2：对话中的人名提取（"XXX说/问/..."）
-  const dialoguePattern = /([\u4e00-\u9fa5]{2,4})\s*(?:说|问|答道|回答|喊道|说道|笑道|低声|高声|大声|冷冷|忽然|突然|又说|便说|却说|乃说)[：:\s]/g;
-  for (const chapter of chapters) {
-    for (const match of chapter.content.matchAll(dialoguePattern)) {
-      const name = match[1].trim();
-      if (name.length >= 2) {
-        nameCount.set(name, (nameCount.get(name) ?? 0) + 5); // 对话发言者加权
-      }
-    }
+  const actionPattern = new RegExp(`${characterName}(?=(?:看见|听见|走|来|去|站|坐|想|觉得|知道|发现|回头|摇头|点头|拿|把|给|将|忽然|便|却|又))`, 'g');
+  for (const match of fullText.matchAll(actionPattern)) {
+    addCandidate(match[1], 4);
   }
 
-  // 阶段3：引号对话提取（"XX道：""XXX说：" 等模式）
-  const quoteSpeakerPattern = /([\u4e00-\u9fa5]{2,4})(?:道|曰|说|问|答)[：:]["\u201c]/g;
-  for (const match of fullText.matchAll(quoteSpeakerPattern)) {
-    const name = match[1].trim();
-    if (name.length >= 2) {
-      nameCount.set(name, (nameCount.get(name) ?? 0) + 5);
-    }
+  const repeatedNamePattern = new RegExp(characterName, 'g');
+  for (const match of fullText.matchAll(repeatedNamePattern)) {
+    addCandidate(match[1], 1);
   }
 
-  // 过滤：排除常见非人名词
-  const stopWords = new Set([
-    '没有', '自己', '他们', '我们', '你们', '她们', '什么', '怎么', '为什么',
-    '可是', '还是', '或者', '虽然', '因为', '所以', '于是', '然而', '但是',
-    '不过', '而且', '并且', '可以', '已经', '这个', '那个', '这样', '那样',
-    '知道', '看见', '听见', '觉得', '以为', '起来', '出来', '过来', '过去',
-    '不是', '就是', '只是', '又是', '也是', '还有', '不能', '不敢', '不曾',
-    '一个', '一些', '一样', '一面', '一声', '一句', '一般', '一切', '一定',
-    '时候', '地方', '上面', '下面', '里面', '外面', '前面', '后面', '旁边',
-    '东西', '事情', '眼睛', '声音', '心里', '今天', '明天', '昨天', '现在',
-    '太阳', '月亮', '先生', '女人', '男人', '孩子', '母亲', '父亲', '兄弟',
-    '从前', '以后', '忽然', '仿佛', '似乎', '便是', '倘若', '果然', '自然',
-    '没有', '一点', '几分', '总须', '我可', '他的', '他说', '我想',
-  ]);
-
-  // 筛选：出现频率 >= 3 且不在停用词列表
-  const candidates = [...nameCount.entries()]
-    .filter(([name, count]) => !stopWords.has(name) && count >= 3)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 15);
-
-  // 角色推断：频率最高的为主角
-  return candidates.map(([name], index) => ({
-    id: `char_${index + 1}`,
-    name,
-    role: index === 0 ? 'protagonist' : 'supporting',
-  }));
-};
-
-const buildCharacterGraph = (chapters: NovelChapter[]) => {
-  const characters = extractCharacters(chapters);
-  const width = 820;
-  const height = 520;
-  const centerX = width / 2;
-  const centerY = height / 2;
-  const radius = Math.min(width, height) * 0.34;
-  const nodes: GraphNode[] = characters.map((character, index) => {
-    if (index === 0) return { ...character, x: centerX, y: centerY };
-    const angle = ((index - 1) / Math.max(characters.length - 1, 1)) * Math.PI * 2 - Math.PI / 2;
-    return {
-      ...character,
-      x: centerX + Math.cos(angle) * radius,
-      y: centerY + Math.sin(angle) * radius,
-    };
-  });
-  const byName = new Map(nodes.map((node) => [node.name, node]));
-  const edgeMap = new Map<string, GraphEdge>();
-
-  chapters.forEach((chapter) => {
-    const present = nodes.filter((node) => chapter.content.includes(node.name)).map((node) => node.name);
-    for (let i = 0; i < present.length; i += 1) {
-      for (let j = i + 1; j < present.length; j += 1) {
-        const source = byName.get(present[i]);
-        const target = byName.get(present[j]);
-        if (!source || !target) continue;
-        const key = [source.id, target.id].sort().join('__');
-        const current = edgeMap.get(key);
-        edgeMap.set(key, current ? { ...current, count: current.count + 1 } : { source: source.id, target: target.id, count: 1 });
-      }
-    }
-  });
-
-  return { width, height, nodes, edges: [...edgeMap.values()] };
+  return [...candidates.entries()]
+    .filter(([, meta]) => meta.strong || meta.score >= 4)
+    .sort((a, b) => b[1].score - a[1].score)
+    .slice(0, 15)
+    .map(([name, meta], index) => ({
+      id: `char_${String(index + 1).padStart(2, '0')}`,
+      name,
+      role: index === 0 ? 'protagonist' : meta.score >= 10 ? 'major_supporting' : 'supporting',
+    })) satisfies ScreenplayCharacter[];
 };
 
 const inferLocation = (content: string) => /地下室|密室|书店|钟楼|门口|房间|街道|山谷|城门|屋内|庭院/.exec(content)?.[0] ?? '待定场景';
 const inferTime = (content: string) => /清晨|早晨|雨夜|深夜|夜晚|黄昏|午后|傍晚|黎明/.exec(content)?.[0] ?? '待定时间';
 
-const convertNovelToScreenplayYaml = (text: string) => {
+const convertNovelToScreenplayYaml = (text: string, characterOverrides?: CharacterInput[]) => {
   const chapters = splitNovelChapters(text);
   if (chapters.length < 3) {
     throw new Error(`当前识别到 ${chapters.length} 个章节，请至少导入或粘贴 3 个章节。`);
   }
 
-  const characters = extractCharacters(chapters);
+  const characters = characterOverrides && characterOverrides.length > 0
+    ? toScreenplayCharacters(characterOverrides)
+    : extractCharacters(chapters);
   const scenes = chapters.map((chapter, index) => {
     const sentences = chapter.content.split(/[。！？!?]\s*/).map((item) => item.trim()).filter(Boolean);
     const dialogues = extractQuotedDialogue(chapter.content).slice(0, 8);
@@ -463,7 +472,7 @@ function App() {
   }, [aiCharacters, chapters]);
 
   const graph = useMemo(() => {
-    // 使用 buildCharacterGraph 的逻辑，但输入用 effectiveCharacters
+    // 图谱展示候选人物在同一章节内共同出现的线索。
     const characters = effectiveCharacters.map((c, i) => ({
       id: `char_${i + 1}`,
       name: c.name,
@@ -510,11 +519,22 @@ function App() {
     };
   }), [chapters]);
 
+  const conversionDiagnostics = useMemo(() => {
+    const dialogueCount = draftScenes.reduce((sum, scene) => sum + scene.dialogueCount, 0);
+    return [
+      { label: '章节输入', value: `${chapters.length} 章`, ok: canContinue },
+      { label: '人物候选', value: `${effectiveCharacters.length} 个`, ok: effectiveCharacters.length > 0 },
+      { label: '草案场景', value: `${draftScenes.length} 个`, ok: draftScenes.length === chapters.length && draftScenes.length >= 3 },
+      { label: '对白线索', value: `${dialogueCount} 条`, ok: dialogueCount > 0 },
+      { label: 'YAML 状态', value: screenplayYaml ? '已生成' : '待生成', ok: Boolean(screenplayYaml) },
+    ];
+  }, [canContinue, chapters.length, draftScenes, effectiveCharacters.length, screenplayYaml]);
+
   // AI 人物提取：章节变化时自动触发
   const aiRunRef = useRef<string>('');
   useEffect(() => {
     if (!aiAvailable) return;
-    const key = chapters.map((c) => c.title).join('|');
+    const key = chapters.map((c) => `${c.title}:${c.content.length}:${c.content.slice(0, 80)}`).join('|');
     if (key === aiRunRef.current || chapters.length < 3) return;
     aiRunRef.current = key;
 
@@ -530,6 +550,25 @@ function App() {
         setAiCharacters(null);
       });
   }, [chapters, aiAvailable]);
+
+  const ensureAICharacters = useCallback(async () => {
+    if (!aiAvailable || chapters.length < 3) return null;
+    if (aiCharacters && aiCharacters.length > 0) return aiCharacters;
+
+    setAiLoading(true);
+    try {
+      const chars = await aiExtractCharacters(chapters);
+      const normalized = chars.map((c) => ({ name: c.name, role: c.role }));
+      setAiCharacters(normalized);
+      return normalized;
+    } catch (err) {
+      console.warn('AI 人物提取失败，使用正则降级：', err);
+      setAiCharacters(null);
+      return null;
+    } finally {
+      setAiLoading(false);
+    }
+  }, [aiAvailable, aiCharacters, chapters]);
 
   const steps = [
     { title: '文本导入', desc: '导入小说文本，识别章节' },
@@ -547,6 +586,8 @@ function App() {
       setNovelInput(text.trim());
       setScreenplayYaml('');
       setImportedFileName(file.name);
+      setAiCharacters(null);
+      aiRunRef.current = '';
       setStatus(`已导入：${file.name}`);
       setActiveStep(1);
     } catch (readError) {
@@ -581,11 +622,13 @@ function App() {
 
     try {
       let yaml: string;
+      const aiCharacterOverride = aiAvailable ? await ensureAICharacters() : null;
+      const charactersForYaml = aiCharacterOverride && aiCharacterOverride.length > 0 ? aiCharacterOverride : effectiveCharacters;
 
       if (aiAvailable && chapters.length >= 3) {
         // AI 增强模式：逐章丰富
         const enrichedScenes = await Promise.all(
-          chapters.map(async (chapter, index) => {
+          chapters.map(async (chapter) => {
             try {
               return await aiEnrichScene(chapter);
             } catch {
@@ -599,7 +642,7 @@ function App() {
           }),
         );
 
-        const characters = effectiveCharacters;
+        const characters = toScreenplayCharacters(charactersForYaml);
         const scenes = chapters.map((chapter, index) => {
           const enrichment = enrichedScenes[index]!;
           const dialogues = extractQuotedDialogue(chapter.content).slice(0, 8);
@@ -673,7 +716,7 @@ function App() {
         ].join('\n');
       } else {
         // 无 AI：回退到纯本地启发式
-        yaml = convertNovelToScreenplayYaml(novelInput);
+        yaml = convertNovelToScreenplayYaml(novelInput, charactersForYaml);
       }
 
       setScreenplayYaml(yaml);
@@ -769,7 +812,7 @@ function App() {
               <label style={{ fontSize: 16, fontWeight: 950 }}>小说正文</label>
               <span style={{ color: COLORS.muted, fontSize: 13 }}>识别章节：{chapters.length}</span>
             </div>
-            <textarea value={novelInput} onChange={(event) => { setNovelInput(event.target.value); setScreenplayYaml(''); setError(''); setImportedFileName(''); }} placeholder="在这里粘贴小说文本。请至少包含 3 个章节，例如：第一章、第二章、第三章。" style={{ width: '100%', minHeight: 500, padding: 20, border: `2px solid ${error ? COLORS.danger : COLORS.line}`, borderRadius: 14, resize: 'vertical', fontSize: 15, lineHeight: 1.75, fontFamily: 'Consolas, Menlo, monospace', color: COLORS.ink, background: '#f8fafc' }} />
+            <textarea value={novelInput} onChange={(event) => { setNovelInput(event.target.value); setScreenplayYaml(''); setError(''); setImportedFileName(''); setAiCharacters(null); aiRunRef.current = ''; }} placeholder="在这里粘贴小说文本。请至少包含 3 个章节，例如：第一章、第二章、第三章。" style={{ width: '100%', minHeight: 500, padding: 20, border: `2px solid ${error ? COLORS.danger : COLORS.line}`, borderRadius: 14, resize: 'vertical', fontSize: 15, lineHeight: 1.75, fontFamily: 'Consolas, Menlo, monospace', color: COLORS.ink, background: '#f8fafc' }} />
           </div>
         </div>
       );
@@ -855,6 +898,13 @@ function App() {
           {['project 元数据', 'characters 人物候选', 'scenes 场景列表', 'beats 动作节拍', 'dialogue 对白'].map((item) => (
             <div key={item} style={{ padding: '10px 0', borderBottom: `1px solid ${COLORS.line}`, fontSize: 14 }}>✅ {item}</div>
           ))}
+          <h3 style={{ margin: '18px 0 10px', fontSize: 18, fontWeight: 950 }}>转换诊断</h3>
+          {conversionDiagnostics.map((item) => (
+            <div key={item.label} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '9px 0', borderBottom: `1px solid ${COLORS.line}`, fontSize: 13 }}>
+              <span style={{ color: COLORS.muted }}>{item.label}</span>
+              <span style={{ color: item.ok ? COLORS.success : COLORS.danger, fontWeight: 900 }}>{item.value}</span>
+            </div>
+          ))}
         </div>
       </div>
     );
@@ -864,7 +914,7 @@ function App() {
     <div style={{ minHeight: '100vh', background: 'var(--cream)', color: 'var(--ink)' }}>
       <header className="app-header">
         <div className="header-inner">
-        <a className="header-brand" href="#" onClick={(e) => { e.preventDefault(); setActiveStep(0); setNovelInput(''); setScreenplayYaml(''); setStatus(''); setError(''); }}>
+        <a className="header-brand" href="#" onClick={(e) => { e.preventDefault(); setActiveStep(0); setNovelInput(''); setScreenplayYaml(''); setStatus(''); setError(''); setAiCharacters(null); aiRunRef.current = ''; }}>
           <div className="header-logo">🎬</div>
           <div>
             <div className="header-title"> novel-graph</div>
@@ -936,7 +986,7 @@ function App() {
               </div>
               <div style={{ display: 'flex', gap: 10 }}>
                 {activeStep > 0 && <button className="btn btn-ghost btn-sm" onClick={() => setActiveStep((step) => Math.max(0, step - 1))}>上一步</button>}
-                <button className="btn btn-ghost btn-sm" onClick={() => { setNovelInput(''); setScreenplayYaml(''); setStatus(''); setError(''); setImportedFileName(''); setActiveStep(0); }}>重置</button>
+                <button className="btn btn-ghost btn-sm" onClick={() => { setNovelInput(''); setScreenplayYaml(''); setStatus(''); setError(''); setImportedFileName(''); setAiCharacters(null); aiRunRef.current = ''; setActiveStep(0); }}>重置</button>
                 <button className="btn btn-primary" onClick={activeStep === 3 ? generateYaml : goNext}>{activeStep === 3 ? (aiAvailable ? 'AI 增强重新生成' : '重新生成 YAML') : activeStep === 2 ? (aiAvailable ? 'AI 生成 YAML' : '生成 YAML') : '下一步'}</button>
               </div>
             </div>
