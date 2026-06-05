@@ -516,6 +516,9 @@ function App() {
       id: `char_${i + 1}`,
       name: c.name,
       role: c.role,
+      mentionCount: 0,
+      chapterCount: 0,
+      chapters: [] as number[],
       x: 0,
       y: 0,
     }));
@@ -531,6 +534,22 @@ function App() {
     });
     const byName = new Map(nodes.map((node) => [node.name, node]));
     const edgeMap = new Map<string, { source: string; target: string; count: number }>();
+
+    nodes.forEach((node) => {
+      const chapterIndexes: number[] = [];
+      let mentionCount = 0;
+      chapters.forEach((chapter) => {
+        const matches = chapter.content.match(new RegExp(node.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')) ?? [];
+        if (matches.length > 0) {
+          chapterIndexes.push(chapter.index);
+          mentionCount += matches.length;
+        }
+      });
+      node.chapters = chapterIndexes;
+      node.chapterCount = chapterIndexes.length;
+      node.mentionCount = mentionCount;
+    });
+
     chapters.forEach((chapter) => {
       const present = nodes.filter((node) => chapter.content.includes(node.name)).map((node) => node.name);
       for (let i = 0; i < present.length; i += 1) {
@@ -544,7 +563,14 @@ function App() {
         }
       }
     });
-    return { width, height, nodes, edges: [...edgeMap.values()] };
+    const edges = [...edgeMap.values()]
+      .sort((a, b) => b.count - a.count)
+      .map((edge) => ({
+        ...edge,
+        sourceName: nodes.find((node) => node.id === edge.source)?.name ?? edge.source,
+        targetName: nodes.find((node) => node.id === edge.target)?.name ?? edge.target,
+      }));
+    return { width, height, nodes, edges };
   }, [effectiveCharacters, chapters]);
 
   const draftScenes = useMemo(() => chapters.map((chapter, index) => {
@@ -1053,11 +1079,45 @@ function App() {
             <h3 style={{ margin: '0 0 12px', fontSize: 20, fontWeight: 950 }}>人物共现图谱</h3>
             <div style={{ padding: 16, borderRadius: 14, border: `1px solid ${COLORS.line}`, background: '#fff' }}>
               <div style={{ color: COLORS.muted, fontSize: 13, lineHeight: 1.7 }}>图谱展示人名候选和同章出现线索，不等同于人工确认的角色设定。</div>
-              <div style={{ marginTop: 16, display: 'grid', gap: 10 }}>
-                {graph.nodes.length === 0 ? <div style={{ color: COLORS.muted }}>暂无人物候选</div> : graph.nodes.slice(0, 8).map((node) => (
-                  <div key={node.id} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <span style={{ width: 28, height: 28, borderRadius: 999, background: node.role === 'protagonist' ? COLORS.accent : COLORS.soft, color: node.role === 'protagonist' ? '#fff' : COLORS.ink, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 950 }}>{node.name.slice(0, 1)}</span>
-                    <span style={{ fontWeight: 850 }}>{node.name}</span>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8, marginTop: 14 }}>
+                {[
+                  ['人物', `${graph.nodes.length} 个`],
+                  ['共现', `${graph.edges.length} 组`],
+                  ['章节', `${chapters.length} 章`],
+                ].map(([label, value]) => (
+                  <div key={label} style={{ padding: 10, borderRadius: 10, background: '#f8fafc', border: `1px solid ${COLORS.line}` }}>
+                    <div style={{ color: COLORS.muted, fontSize: 11, fontWeight: 850 }}>{label}</div>
+                    <div style={{ marginTop: 4, fontWeight: 950 }}>{value}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ marginTop: 16, display: 'grid', gap: 10, maxHeight: 330, overflow: 'auto', paddingRight: 4 }}>
+                {graph.nodes.length === 0 ? <div style={{ color: COLORS.muted }}>暂无人物候选</div> : graph.nodes.map((node) => (
+                  <div key={node.id} style={{ display: 'grid', gridTemplateColumns: '32px 1fr', gap: 10, alignItems: 'start' }}>
+                    <span style={{ width: 32, height: 32, borderRadius: 999, background: node.role === 'protagonist' ? COLORS.accent : COLORS.soft, color: node.role === 'protagonist' ? '#fff' : COLORS.ink, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 950 }}>{node.name.slice(0, 1)}</span>
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
+                        <span style={{ fontWeight: 900 }}>{node.name}</span>
+                        <span style={{ color: COLORS.muted, fontSize: 12 }}>{node.role}</span>
+                      </div>
+                      <div style={{ color: COLORS.muted, fontSize: 12, lineHeight: 1.6 }}>
+                        出现 {node.mentionCount} 次 · 覆盖 {node.chapterCount} 章
+                      </div>
+                      {node.chapters.length > 0 && (
+                        <div style={{ color: COLORS.muted, fontSize: 11, lineHeight: 1.5 }}>章节：{node.chapters.slice(0, 8).join('、')}{node.chapters.length > 8 ? '...' : ''}</div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <h4 style={{ margin: '18px 0 8px', fontSize: 15, fontWeight: 950 }}>同章出现线索</h4>
+              <div style={{ display: 'grid', gap: 8, maxHeight: 180, overflow: 'auto', paddingRight: 4 }}>
+                {graph.edges.length === 0 ? (
+                  <div style={{ color: COLORS.muted, fontSize: 13 }}>暂无共现线索</div>
+                ) : graph.edges.slice(0, 12).map((edge) => (
+                  <div key={`${edge.source}-${edge.target}`} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '8px 10px', borderRadius: 8, background: '#f8fafc', fontSize: 12 }}>
+                    <span style={{ fontWeight: 850 }}>{edge.sourceName} - {edge.targetName}</span>
+                    <span style={{ color: COLORS.muted }}>同章 {edge.count} 次</span>
                   </div>
                 ))}
               </div>
