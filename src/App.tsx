@@ -1373,56 +1373,58 @@ function App() {
               </span>
             </div>
             <div className={`character-graph-card character-graph-card--${characterPanelMode}`}>
-              <div style={{ color: COLORS.muted, fontSize: 13, lineHeight: 1.7 }}>
+              <div className="character-panel-copy">
                 {characterPanelMode === 'checking'
                   ? '当前先展示上传文本的规则初筛结果，AI 正在校对人物名单，完成后会平滑更新图谱。'
                   : characterPanelMode === 'ai'
                     ? '图谱基于 AI 校对后的人物候选展示同章出现线索，仍需作者最终确认。'
                     : '图谱展示上传文本的规则初筛人名和同章出现线索，不等同于人工确认的角色设定。'}
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8, marginTop: 14 }}>
+              <div className="character-metrics-strip">
                 {[
                   ['人物', `${graph.nodes.length} 个`],
                   ['共现', `${graph.edges.length} 组`],
                   ['章节', `${chapters.length} 章`],
                 ].map(([label, value]) => (
-                  <div key={label} style={{ padding: 10, borderRadius: 10, background: '#f8fafc', border: `1px solid ${COLORS.line}` }}>
-                    <div style={{ color: COLORS.muted, fontSize: 11, fontWeight: 850 }}>{label}</div>
-                    <div style={{ marginTop: 4, fontWeight: 950 }}>{value}</div>
+                  <div key={label} className="character-metric-pill">
+                    <span>{label}</span>
+                    <strong>{value}</strong>
                   </div>
                 ))}
               </div>
               <div
                 key={characterPanelMode}
                 className="character-list-transition"
-                style={{ marginTop: 16, display: 'grid', gap: 10, maxHeight: 330, overflow: 'auto', paddingRight: 4 }}
               >
                 {graph.nodes.length === 0 ? <div style={{ color: COLORS.muted }}>暂无人物候选</div> : graph.nodes.map((node) => (
-                  <div key={node.id} style={{ display: 'grid', gridTemplateColumns: '32px 1fr', gap: 10, alignItems: 'start' }}>
-                    <span style={{ width: 32, height: 32, borderRadius: 999, background: node.role === 'protagonist' ? COLORS.accent : COLORS.soft, color: node.role === 'protagonist' ? '#fff' : COLORS.ink, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 950 }}>{node.name.slice(0, 1)}</span>
+                  <div key={node.id} className="character-row">
+                    <span className={`character-avatar-dot${node.role === 'protagonist' ? ' character-avatar-dot--lead' : ''}`}>{node.name.slice(0, 1)}</span>
                     <div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
-                        <span style={{ fontWeight: 900 }}>{node.name}</span>
-                        <span style={{ color: COLORS.muted, fontSize: 12 }}>{node.role}</span>
+                      <div className="character-row-head">
+                        <span>{node.name}</span>
+                        <small>{node.role}</small>
                       </div>
-                      <div style={{ color: COLORS.muted, fontSize: 12, lineHeight: 1.6 }}>
+                      <div className="character-row-meta">
                         出现 {node.mentionCount} 次 · 覆盖 {node.chapterCount} 章
                       </div>
                       {node.chapters.length > 0 && (
-                        <div style={{ color: COLORS.muted, fontSize: 11, lineHeight: 1.5 }}>章节：{node.chapters.slice(0, 8).join('、')}{node.chapters.length > 8 ? '...' : ''}</div>
+                        <div className="character-row-chapters">章节：{node.chapters.slice(0, 6).join('、')}{node.chapters.length > 6 ? '...' : ''}</div>
                       )}
                     </div>
                   </div>
                 ))}
               </div>
-              <h4 style={{ margin: '18px 0 8px', fontSize: 15, fontWeight: 950 }}>同章出现线索</h4>
-              <div style={{ display: 'grid', gap: 8, maxHeight: 180, overflow: 'auto', paddingRight: 4 }}>
+              <div className="cooccurrence-head">
+                <h4>同章出现线索</h4>
+                <span>前 {Math.min(graph.edges.length, 6)} 组</span>
+              </div>
+              <div className="cooccurrence-list">
                 {graph.edges.length === 0 ? (
                   <div style={{ color: COLORS.muted, fontSize: 13 }}>暂无共现线索</div>
-                ) : graph.edges.slice(0, 12).map((edge) => (
-                  <div key={`${edge.source}-${edge.target}`} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '8px 10px', borderRadius: 8, background: '#f8fafc', fontSize: 12 }}>
-                    <span style={{ fontWeight: 850 }}>{edge.sourceName} - {edge.targetName}</span>
-                    <span style={{ color: COLORS.muted }}>同章 {edge.count} 次</span>
+                ) : graph.edges.slice(0, 6).map((edge) => (
+                  <div key={`${edge.source}-${edge.target}`} className="cooccurrence-row">
+                    <span>{edge.sourceName} - {edge.targetName}</span>
+                    <small>同章 {edge.count} 次</small>
                   </div>
                 ))}
               </div>
