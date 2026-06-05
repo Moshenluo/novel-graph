@@ -31,9 +31,10 @@ project:
   target_format: "影视短片"
   structure_focus: "单线三幕式，场景应服务一个核心冲突"
   pacing: "紧凑，减少旁支铺陈"
-  adaptation_style: "现实主义"
-  tone: "克制、贴近日常，冲突来自人物处境和选择"
-  dialogue_style: "对白自然，不夸张，保留生活口吻和潜台词"
+  adaptation_style: "保持原文"
+  style_policy: "preserve_source"
+  tone: "不额外套用类型风格，尽量保留原文气质和叙述重心"
+  dialogue_style: "对白以原文人物语气为准，只做剧本化整理"
   chapter_count: 3
   logline: "由小说章节自动提炼出的可编辑剧本初稿。"
 ```
@@ -42,10 +43,11 @@ project:
 | --- | --- | --- |
 | `title` | string | 剧本项目名称，默认可由作者修改。 |
 | `source_type` | string | 输入来源，目前固定为 `novel`。 |
-| `target_format` | string | 改编目标，如影视短片、短剧分集、舞台剧。 |
+| `target_format` | string | 改编目标，如影视短片、电影长片、短剧分集、单集电视剧、舞台剧、有声剧。 |
 | `structure_focus` | string | 当前目标下的结构重点，用于指导作者后续打磨。 |
 | `pacing` | string | 当前目标下的节奏建议。 |
-| `adaptation_style` | string | 改编风格，如现实主义、悬疑惊悚、轻喜剧、古风权谋。 |
+| `adaptation_style` | string | 改编风格，如保持原文、现实主义、悬疑惊悚、轻喜剧、古风权谋、情感爱情、科幻设定、奇幻史诗。 |
+| `style_policy` | string | 风格策略，`preserve_source` 表示不额外套用类型风格，`style_guided` 表示按预设风格改写。 |
 | `tone` | string | 风格对应的整体语气。 |
 | `dialogue_style` | string | 风格对应的对白处理建议。 |
 | `chapter_count` | number | 成功识别的小说章节数。 |

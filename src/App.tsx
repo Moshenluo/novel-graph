@@ -14,8 +14,8 @@ interface DialogueLine {
 }
 
 type CharacterRole = 'protagonist' | 'major_supporting' | 'supporting' | 'minor';
-type AdaptationTargetId = 'film_short' | 'web_series' | 'stage_play';
-type AdaptationStyleId = 'realist' | 'suspense' | 'light_comedy' | 'historical_intrigue';
+type AdaptationTargetId = 'film_short' | 'feature_film' | 'web_series' | 'tv_episode' | 'stage_play' | 'audio_drama';
+type AdaptationStyleId = 'preserve_source' | 'realist' | 'suspense' | 'light_comedy' | 'historical_intrigue' | 'romance' | 'sci_fi' | 'fantasy_epic';
 
 interface ScreenplayCharacter {
   id: string;
@@ -86,6 +86,7 @@ interface AdaptationStyle {
   tone: string;
   dialogueGuide: string;
   beatGuide: string;
+  preserveSource?: boolean;
 }
 
 const COLORS = {
@@ -131,12 +132,28 @@ const ADAPTATION_TARGETS: AdaptationTarget[] = [
     pacing: '紧凑，减少旁支铺陈',
   },
   {
+    id: 'feature_film',
+    name: '电影长片',
+    shortName: '长片',
+    description: '强调主线成长、关键转折和完整人物弧光。',
+    structureFocus: '完整三幕式，保留主线推进、转折点和高潮段落',
+    pacing: '中等节奏，允许铺垫但需要清晰转折',
+  },
+  {
     id: 'web_series',
     name: '短剧分集',
     shortName: '短剧',
     description: '强调高频钩子、人物关系推进和分场悬念。',
     structureFocus: '分集钩子，每章尽量形成可追看的场景推进',
     pacing: '快节奏，场景结尾保留悬念',
+  },
+  {
+    id: 'tv_episode',
+    name: '单集电视剧',
+    shortName: '单集',
+    description: '强调 A/B 线推进、人物关系和集内小高潮。',
+    structureFocus: '单集结构，主线推进同时保留人物关系副线',
+    pacing: '稳中有起伏，每场需要明确戏剧功能',
   },
   {
     id: 'stage_play',
@@ -146,6 +163,14 @@ const ADAPTATION_TARGETS: AdaptationTarget[] = [
     structureFocus: '舞台空间与对白驱动，动作需可被演员表演',
     pacing: '稳健，允许更长对白和场面调度',
   },
+  {
+    id: 'audio_drama',
+    name: '有声剧',
+    shortName: '有声',
+    description: '突出声音线索、对白节奏和可听化场景信息。',
+    structureFocus: '声音驱动，场景信息需要通过对白、音效和旁白传达',
+    pacing: '清晰，避免依赖纯视觉动作',
+  },
 ];
 
 const DEFAULT_ADAPTATION_TARGET = ADAPTATION_TARGETS[0];
@@ -153,6 +178,15 @@ const DEFAULT_ADAPTATION_TARGET = ADAPTATION_TARGETS[0];
 const getAdaptationTarget = (id: AdaptationTargetId) => ADAPTATION_TARGETS.find((target) => target.id === id) ?? DEFAULT_ADAPTATION_TARGET;
 
 const ADAPTATION_STYLES: AdaptationStyle[] = [
+  {
+    id: 'preserve_source',
+    name: '保持原文',
+    shortName: '原文',
+    tone: '不额外套用类型风格，尽量保留原文气质和叙述重心',
+    dialogueGuide: '对白以原文人物语气为准，只做剧本化整理',
+    beatGuide: '节拍以原文事件顺序为主，减少风格化改写',
+    preserveSource: true,
+  },
   {
     id: 'realist',
     name: '现实主义',
@@ -184,6 +218,30 @@ const ADAPTATION_STYLES: AdaptationStyle[] = [
     tone: '含蓄、压抑、关系博弈明显',
     dialogueGuide: '对白更克制，注意身份、礼法和暗示',
     beatGuide: '节拍强调试探、布局、权力关系和场面调度',
+  },
+  {
+    id: 'romance',
+    name: '情感爱情',
+    shortName: '爱情',
+    tone: '细腻、暧昧、重视关系推进和情绪转折',
+    dialogueGuide: '对白保留试探、回避和未说出口的情绪',
+    beatGuide: '节拍强调目光、距离、误解和关系变化',
+  },
+  {
+    id: 'sci_fi',
+    name: '科幻设定',
+    shortName: '科幻',
+    tone: '理性、陌生化，突出设定压力与人物选择',
+    dialogueGuide: '对白需要解释必要设定，但避免大段说明书式台词',
+    beatGuide: '节拍强调规则揭示、技术限制和选择代价',
+  },
+  {
+    id: 'fantasy_epic',
+    name: '奇幻史诗',
+    shortName: '奇幻',
+    tone: '宏大、宿命感强，强调世界秩序和人物使命',
+    dialogueGuide: '对白可更庄重，但需要保留人物差异',
+    beatGuide: '节拍强调仪式、阵营、抉择和世界观后果',
   },
 ];
 
@@ -303,11 +361,13 @@ const aiEnrichScene = async (chapter: NovelChapter, target: AdaptationTarget, st
 - 结构重点：${target.structureFocus}
 - 节奏要求：${target.pacing}
 
-当前改编风格：
+${style.preserveSource ? `当前改编风格：
+- 风格：保持原文
+- 要求：不要额外套用类型风格，优先保留原文气质、人物语气和叙事重心。只做剧本结构化整理。` : `当前改编风格：
 - 风格：${style.name}
 - 语气：${style.tone}
 - 对白指南：${style.dialogueGuide}
-- 节拍指南：${style.beatGuide}
+- 节拍指南：${style.beatGuide}`}
 
 请分析以下文本，输出 JSON：
 
@@ -600,6 +660,7 @@ const convertNovelToScreenplayYaml = (text: string, target: AdaptationTarget, st
     `  structure_focus: ${yamlScalar(target.structureFocus)}`,
     `  pacing: ${yamlScalar(target.pacing)}`,
     `  adaptation_style: ${yamlScalar(style.name)}`,
+    `  style_policy: "${style.preserveSource ? 'preserve_source' : 'style_guided'}"`,
     `  tone: ${yamlScalar(style.tone)}`,
     `  dialogue_style: ${yamlScalar(style.dialogueGuide)}`,
     `  chapter_count: ${chapters.length}`,
@@ -1151,6 +1212,7 @@ function App() {
           `  structure_focus: ${yamlScalar(adaptationTarget.structureFocus)}`,
           `  pacing: ${yamlScalar(adaptationTarget.pacing)}`,
           `  adaptation_style: ${yamlScalar(adaptationStyle.name)}`,
+          `  style_policy: "${adaptationStyle.preserveSource ? 'preserve_source' : 'style_guided'}"`,
           `  tone: ${yamlScalar(adaptationStyle.tone)}`,
           `  dialogue_style: ${yamlScalar(adaptationStyle.dialogueGuide)}`,
           `  chapter_count: ${chapters.length}`,
