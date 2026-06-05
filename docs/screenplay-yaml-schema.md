@@ -31,6 +31,9 @@ project:
   target_format: "影视短片"
   structure_focus: "单线三幕式，场景应服务一个核心冲突"
   pacing: "紧凑，减少旁支铺陈"
+  adaptation_style: "现实主义"
+  tone: "克制、贴近日常，冲突来自人物处境和选择"
+  dialogue_style: "对白自然，不夸张，保留生活口吻和潜台词"
   chapter_count: 3
   logline: "由小说章节自动提炼出的可编辑剧本初稿。"
 ```
@@ -42,10 +45,13 @@ project:
 | `target_format` | string | 改编目标，如影视短片、短剧分集、舞台剧。 |
 | `structure_focus` | string | 当前目标下的结构重点，用于指导作者后续打磨。 |
 | `pacing` | string | 当前目标下的节奏建议。 |
+| `adaptation_style` | string | 改编风格，如现实主义、悬疑惊悚、轻喜剧、古风权谋。 |
+| `tone` | string | 风格对应的整体语气。 |
+| `dialogue_style` | string | 风格对应的对白处理建议。 |
 | `chapter_count` | number | 成功识别的小说章节数。 |
 | `logline` | string | 一句话梗概，自动生成阶段可先给占位文案。 |
 
-设计原因：项目元数据放在顶层，便于 README、Demo、导出文件和后续工作流快速展示输入规模与剧本定位。`target_format`、`structure_focus` 和 `pacing` 让同一份小说可以按不同剧本目标生成不同打磨方向。
+设计原因：项目元数据放在顶层，便于 README、Demo、导出文件和后续工作流快速展示输入规模与剧本定位。`target_format`、`structure_focus` 和 `pacing` 让同一份小说可以按不同剧本目标生成不同打磨方向；`adaptation_style`、`tone` 和 `dialogue_style` 让同一目标下也能形成不同表达风格。
 
 ## characters
 
