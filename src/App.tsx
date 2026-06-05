@@ -15,6 +15,7 @@ interface DialogueLine {
 
 type CharacterRole = 'protagonist' | 'major_supporting' | 'supporting' | 'minor';
 type AdaptationTargetId = 'film_short' | 'web_series' | 'stage_play';
+type AdaptationStyleId = 'realist' | 'suspense' | 'light_comedy' | 'historical_intrigue';
 
 interface ScreenplayCharacter {
   id: string;
@@ -76,6 +77,15 @@ interface AdaptationTarget {
   description: string;
   structureFocus: string;
   pacing: string;
+}
+
+interface AdaptationStyle {
+  id: AdaptationStyleId;
+  name: string;
+  shortName: string;
+  tone: string;
+  dialogueGuide: string;
+  beatGuide: string;
 }
 
 const COLORS = {
@@ -141,6 +151,45 @@ const ADAPTATION_TARGETS: AdaptationTarget[] = [
 const DEFAULT_ADAPTATION_TARGET = ADAPTATION_TARGETS[0];
 
 const getAdaptationTarget = (id: AdaptationTargetId) => ADAPTATION_TARGETS.find((target) => target.id === id) ?? DEFAULT_ADAPTATION_TARGET;
+
+const ADAPTATION_STYLES: AdaptationStyle[] = [
+  {
+    id: 'realist',
+    name: '现实主义',
+    shortName: '现实',
+    tone: '克制、贴近日常，冲突来自人物处境和选择',
+    dialogueGuide: '对白自然，不夸张，保留生活口吻和潜台词',
+    beatGuide: '节拍强调行动细节和人物反应',
+  },
+  {
+    id: 'suspense',
+    name: '悬疑惊悚',
+    shortName: '悬疑',
+    tone: '紧张、压迫、信息逐步揭露',
+    dialogueGuide: '对白保留隐瞒、试探和反问，避免一次性解释真相',
+    beatGuide: '节拍强调线索、误导、停顿和反转',
+  },
+  {
+    id: 'light_comedy',
+    name: '轻喜剧',
+    shortName: '喜剧',
+    tone: '轻快、有误会、有反差，但不破坏人物真实动机',
+    dialogueGuide: '对白更短促，允许机锋、反差和节奏性回应',
+    beatGuide: '节拍强调误会升级、节奏停顿和关系反差',
+  },
+  {
+    id: 'historical_intrigue',
+    name: '古风权谋',
+    shortName: '权谋',
+    tone: '含蓄、压抑、关系博弈明显',
+    dialogueGuide: '对白更克制，注意身份、礼法和暗示',
+    beatGuide: '节拍强调试探、布局、权力关系和场面调度',
+  },
+];
+
+const DEFAULT_ADAPTATION_STYLE = ADAPTATION_STYLES[0];
+
+const getAdaptationStyle = (id: AdaptationStyleId) => ADAPTATION_STYLES.find((style) => style.id === id) ?? DEFAULT_ADAPTATION_STYLE;
 
 const callDeepSeek = async (systemPrompt: string, userPrompt: string): Promise<string> => {
   const apiKey = getDeepSeekApiKey();
@@ -244,7 +293,7 @@ interface AISceneEnrichment {
   suggested_dialogue: string[];
 }
 
-const aiEnrichScene = async (chapter: NovelChapter, target: AdaptationTarget): Promise<AISceneEnrichment> => {
+const aiEnrichScene = async (chapter: NovelChapter, target: AdaptationTarget, style: AdaptationStyle): Promise<AISceneEnrichment> => {
   const content = chapter.content.slice(0, 3000);
 
   const systemPrompt = `你是剧本顾问，负责将小说章节转换为剧本场景卡片。
@@ -253,6 +302,12 @@ const aiEnrichScene = async (chapter: NovelChapter, target: AdaptationTarget): P
 - 类型：${target.name}
 - 结构重点：${target.structureFocus}
 - 节奏要求：${target.pacing}
+
+当前改编风格：
+- 风格：${style.name}
+- 语气：${style.tone}
+- 对白指南：${style.dialogueGuide}
+- 节拍指南：${style.beatGuide}
 
 请分析以下文本，输出 JSON：
 
@@ -272,6 +327,7 @@ const aiEnrichScene = async (chapter: NovelChapter, target: AdaptationTarget): P
 - beats 输出 3-5 个节拍，每个节拍描述一个具体的戏剧动作或转折
 - summary 要突出冲突和张力
 - 场景设计需要贴合当前改编目标，不要输出泛泛的小说摘要
+- suggested_dialogue 和 beats 需要贴合当前改编风格
 - conflict、dramatic_purpose、suggested_dialogue 可以基于原文合理推理，但不要伪称为原文直接出现
 - 语言使用流畅中文
 
@@ -502,7 +558,7 @@ const extractCharacters = (chapters: NovelChapter[]) => {
 const inferLocation = (content: string) => /地下室|密室|书店|钟楼|门口|房间|街道|山谷|城门|屋内|庭院/.exec(content)?.[0] ?? '待定场景';
 const inferTime = (content: string) => /清晨|早晨|雨夜|深夜|夜晚|黄昏|午后|傍晚|黎明/.exec(content)?.[0] ?? '待定时间';
 
-const convertNovelToScreenplayYaml = (text: string, target: AdaptationTarget, characterOverrides?: CharacterInput[]) => {
+const convertNovelToScreenplayYaml = (text: string, target: AdaptationTarget, style: AdaptationStyle, characterOverrides?: CharacterInput[]) => {
   const chapters = splitNovelChapters(text);
   if (chapters.length < 3) {
     throw new Error(`当前识别到 ${chapters.length} 个章节，请至少导入或粘贴 3 个章节。`);
@@ -543,6 +599,9 @@ const convertNovelToScreenplayYaml = (text: string, target: AdaptationTarget, ch
     `  target_format: ${yamlScalar(target.name)}`,
     `  structure_focus: ${yamlScalar(target.structureFocus)}`,
     `  pacing: ${yamlScalar(target.pacing)}`,
+    `  adaptation_style: ${yamlScalar(style.name)}`,
+    `  tone: ${yamlScalar(style.tone)}`,
+    `  dialogue_style: ${yamlScalar(style.dialogueGuide)}`,
     `  chapter_count: ${chapters.length}`,
     '  logline: "由小说章节自动提炼出的可编辑剧本初稿。"',
     'characters:',
@@ -574,6 +633,7 @@ const convertNovelToScreenplayYaml = (text: string, target: AdaptationTarget, ch
     'adaptation_notes:',
     '  - "本稿为浏览器本地启发式转换结果，不调用外部接口。"',
     `  - "当前改编目标：${target.name}。${target.description}"`,
+    `  - "当前改编风格：${style.name}。${style.tone}"`,
     '  - "建议作者继续补充人物动机、场景调度和对白节奏。"',
     'review_checklist:',
     '  - id: "review_chapters"',
@@ -616,11 +676,13 @@ function App() {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiCharacters, setAiCharacters] = useState<CharacterInput[] | null>(null);
   const [adaptationTargetId, setAdaptationTargetId] = useState<AdaptationTargetId>(DEFAULT_ADAPTATION_TARGET.id);
+  const [adaptationStyleId, setAdaptationStyleId] = useState<AdaptationStyleId>(DEFAULT_ADAPTATION_STYLE.id);
   const [generationStats, setGenerationStats] = useState<GenerationStats>(() => createEmptyGenerationStats());
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const aiAvailable = getAIStatus() === 'enabled';
   const adaptationTarget = useMemo(() => getAdaptationTarget(adaptationTargetId), [adaptationTargetId]);
+  const adaptationStyle = useMemo(() => getAdaptationStyle(adaptationStyleId), [adaptationStyleId]);
 
   const chapters = useMemo(() => splitNovelChapters(novelInput), [novelInput]);
   const canContinue = chapters.length >= 3;
@@ -768,6 +830,11 @@ function App() {
         passed: screenplayYaml.includes('target_format:'),
       },
       {
+        label: '改编风格',
+        detail: screenplayYaml.includes('adaptation_style:') ? adaptationStyle.name : '待写入',
+        passed: screenplayYaml.includes('adaptation_style:'),
+      },
+      {
         label: '动作节拍',
         detail: `${beatCount} 条节拍`,
         passed: beatCount >= Math.max(chapters.length, 1),
@@ -798,7 +865,7 @@ function App() {
         passed: screenplayYaml.includes('review_checklist:'),
       },
     ];
-  }, [adaptationTarget.name, chapters.length, generationStats.mode, screenplayYaml]);
+  }, [adaptationStyle.name, adaptationTarget.name, chapters.length, generationStats.mode, screenplayYaml]);
 
   const adaptationReviewChecklist = useMemo<ReviewChecklistItem[]>(() => {
     const hasAiInference = screenplayYaml.includes('ai_inference:');
@@ -1008,7 +1075,7 @@ function App() {
         for (const [index, chapter] of chapters.entries()) {
           setStatus(`AI 正在分析场景 ${index + 1}/${chapters.length}...`);
           try {
-            const enrichment = await aiEnrichScene(chapter, adaptationTarget);
+            const enrichment = await aiEnrichScene(chapter, adaptationTarget, adaptationStyle);
             enrichedScenes.push(enrichment);
             aiSceneCount += 1;
           } catch {
@@ -1083,6 +1150,9 @@ function App() {
           `  target_format: ${yamlScalar(adaptationTarget.name)}`,
           `  structure_focus: ${yamlScalar(adaptationTarget.structureFocus)}`,
           `  pacing: ${yamlScalar(adaptationTarget.pacing)}`,
+          `  adaptation_style: ${yamlScalar(adaptationStyle.name)}`,
+          `  tone: ${yamlScalar(adaptationStyle.tone)}`,
+          `  dialogue_style: ${yamlScalar(adaptationStyle.dialogueGuide)}`,
           `  chapter_count: ${chapters.length}`,
           `  logline: "由 DeepSeek AI 分析小说章节后自动提炼的剧本初稿，建议作者继续打磨。"`,
           'characters:',
@@ -1129,6 +1199,7 @@ function App() {
           'adaptation_notes:',
           '  - "本稿由 DeepSeek AI 辅助生成，人物提取与场景分析均经 AI 处理。"',
           `  - "当前改编目标：${adaptationTarget.name}。${adaptationTarget.description}"`,
+          `  - "当前改编风格：${adaptationStyle.name}。${adaptationStyle.tone}"`,
           `  - "AI 场景分析完成 ${aiSceneCount}/${chapters.length} 章，降级 ${fallbackSceneCount} 章。"`,
           '  - "建议作者继续补充人物动机、场景调度和对白节奏。"',
           '  - "AI 建议可能有误，请以作者判断为准。"',
@@ -1152,7 +1223,7 @@ function App() {
         ].join('\n');
       } else {
         // 无 AI：回退到纯本地启发式
-        yaml = convertNovelToScreenplayYaml(novelInput, adaptationTarget, charactersForYaml);
+        yaml = convertNovelToScreenplayYaml(novelInput, adaptationTarget, adaptationStyle, charactersForYaml);
         setGenerationStats({
           mode: 'local',
           totalScenes: chapters.length,
@@ -1255,6 +1326,29 @@ function App() {
                   >
                     <span>{target.name}</span>
                     <small>{target.description}</small>
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="target-selector">
+              <div className="target-selector-head">
+                <span>改编风格</span>
+                <strong>{adaptationStyle.shortName}</strong>
+              </div>
+              <div className="style-options">
+                {ADAPTATION_STYLES.map((style) => (
+                  <button
+                    key={style.id}
+                    type="button"
+                    className={`target-option${adaptationStyleId === style.id ? ' target-option--active' : ''}`}
+                    onClick={() => {
+                      setAdaptationStyleId(style.id);
+                      setScreenplayYaml('');
+                      setGenerationStats(createEmptyGenerationStats());
+                    }}
+                  >
+                    <span>{style.name}</span>
+                    <small>{style.tone}</small>
                   </button>
                 ))}
               </div>
@@ -1542,6 +1636,7 @@ function App() {
               ['人物候选', `${effectiveCharacters.length} 个`, effectiveCharacters.length > 0],
               ['草案场景', `${draftScenes.length} 个`, draftScenes.length > 0],
               ['改编目标', adaptationTarget.shortName, true],
+              ['改编风格', adaptationStyle.shortName, true],
               ['生成模式', generationStats.mode === 'idle' ? '待生成' : generationStats.mode === 'local' ? '本地' : generationStats.mode === 'ai' ? 'AI' : '混合', generationStats.mode !== 'idle'],
               ['YAML 初稿', screenplayYaml ? '已生成' : '未生成', Boolean(screenplayYaml)],
             ].map(([label, value, passed]) => (
