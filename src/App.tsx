@@ -43,17 +43,33 @@ const COLORS = {
 /*  AI 增强模块：DeepSeek API 调用                                     */
 /* ------------------------------------------------------------------ */
 
+const DEEPSEEK_API_KEY_STORAGE = 'novelGraph.deepseekApiKey';
+const DEEPSEEK_BASE_URL_STORAGE = 'novelGraph.deepseekBaseUrl';
+
+const readStoredValue = (key: string) => {
+  if (typeof window === 'undefined') return '';
+  return window.localStorage.getItem(key) ?? '';
+};
+
+const getDeepSeekApiKey = () => readStoredValue(DEEPSEEK_API_KEY_STORAGE).trim() || import.meta.env.VITE_DEEPSEEK_API_KEY?.trim() || '';
+const getDeepSeekBaseUrl = () => readStoredValue(DEEPSEEK_BASE_URL_STORAGE).trim() || import.meta.env.VITE_DEEPSEEK_BASE_URL || 'https://api.deepseek.com';
+const getDeepSeekConfigSource = () => {
+  if (readStoredValue(DEEPSEEK_API_KEY_STORAGE).trim()) return 'runtime';
+  if (import.meta.env.VITE_DEEPSEEK_API_KEY?.trim()) return 'env';
+  return 'none';
+};
+
 const getAIStatus = () => {
-  const key = import.meta.env.VITE_DEEPSEEK_API_KEY;
+  const key = getDeepSeekApiKey();
   return key && key.trim().length > 0 ? 'enabled' : 'disabled';
 };
 
 const callDeepSeek = async (systemPrompt: string, userPrompt: string): Promise<string> => {
-  const apiKey = import.meta.env.VITE_DEEPSEEK_API_KEY;
-  const baseUrl = import.meta.env.VITE_DEEPSEEK_BASE_URL || 'https://api.deepseek.com';
+  const apiKey = getDeepSeekApiKey();
+  const baseUrl = getDeepSeekBaseUrl();
 
   if (!apiKey || !apiKey.trim()) {
-    throw new Error('未配置 DeepSeek API Key。请在 .env 中设置 VITE_DEEPSEEK_API_KEY。');
+    throw new Error('未配置 DeepSeek API Key。请在侧栏临时配置，或在 .env 中设置 VITE_DEEPSEEK_API_KEY 后重启开发服务器。');
   }
 
   const response = await fetch(`${baseUrl}/chat/completions`, {
@@ -458,9 +474,13 @@ function App() {
   const [isDragging, setIsDragging] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiCharacters, setAiCharacters] = useState<{ name: string; role: string }[] | null>(null);
+  const [, setAiConfigVersion] = useState(0);
+  const [apiKeyDraft, setApiKeyDraft] = useState(() => readStoredValue(DEEPSEEK_API_KEY_STORAGE));
+  const [apiBaseDraft, setApiBaseDraft] = useState(() => getDeepSeekBaseUrl());
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const aiAvailable = getAIStatus() === 'enabled';
+  const aiConfigSource = getDeepSeekConfigSource();
 
   const chapters = useMemo(() => splitNovelChapters(novelInput), [novelInput]);
   const canContinue = chapters.length >= 3;
@@ -615,6 +635,34 @@ function App() {
     const file = event.dataTransfer.files?.[0];
     if (file) handleFileImport(file);
   }, [handleFileImport]);
+
+  const handleSaveApiConfig = () => {
+    const key = apiKeyDraft.trim();
+    const baseUrl = apiBaseDraft.trim() || 'https://api.deepseek.com';
+    if (!key) {
+      setError('请输入 DeepSeek API Key，或使用 .env 配置后重启开发服务器。');
+      return;
+    }
+    window.localStorage.setItem(DEEPSEEK_API_KEY_STORAGE, key);
+    window.localStorage.setItem(DEEPSEEK_BASE_URL_STORAGE, baseUrl);
+    setAiCharacters(null);
+    aiRunRef.current = '';
+    setAiConfigVersion((version) => version + 1);
+    setError('');
+    setStatus('DeepSeek API 已临时启用，本地浏览器保存。');
+  };
+
+  const handleClearApiConfig = () => {
+    window.localStorage.removeItem(DEEPSEEK_API_KEY_STORAGE);
+    window.localStorage.removeItem(DEEPSEEK_BASE_URL_STORAGE);
+    setApiKeyDraft('');
+    setApiBaseDraft(import.meta.env.VITE_DEEPSEEK_BASE_URL || 'https://api.deepseek.com');
+    setAiCharacters(null);
+    aiRunRef.current = '';
+    setAiConfigVersion((version) => version + 1);
+    setStatus('已清除浏览器临时 API 配置。');
+    setError('');
+  };
 
   const generateYaml = async () => {
     setError('');
@@ -969,8 +1017,38 @@ function App() {
 
           <div className="sidebar-note">
             {aiAvailable
-              ? '🔮 DeepSeek AI 已启用 · 人物提取与场景分析由 AI 辅助，结果仅供参考。'
-              : '配置 VITE_DEEPSEEK_API_KEY 可启用 AI 增强模式，提升人物识别与场景分析精度。'}
+              ? `🔮 DeepSeek AI 已启用 · 来源：${aiConfigSource === 'runtime' ? '页面临时配置' : '.env 环境变量'}。`
+              : '未检测到 API Key。可在下方临时填写，或配置 .env 后重启开发服务器。'}
+          </div>
+
+          <div className="status-panel" style={{ marginTop: 18 }}>
+            <div className="status-panel-title">AI 配置</div>
+            <label style={{ display: 'grid', gap: 7, marginTop: 12 }}>
+              <span className="status-label">DeepSeek API Key</span>
+              <input
+                type="password"
+                value={apiKeyDraft}
+                onChange={(event) => setApiKeyDraft(event.target.value)}
+                placeholder="sk-..."
+                style={{ width: '100%', boxSizing: 'border-box', border: `1px solid ${COLORS.line}`, borderRadius: 10, padding: '10px 12px', background: '#fff', color: COLORS.ink }}
+              />
+            </label>
+            <label style={{ display: 'grid', gap: 7, marginTop: 12 }}>
+              <span className="status-label">Base URL</span>
+              <input
+                value={apiBaseDraft}
+                onChange={(event) => setApiBaseDraft(event.target.value)}
+                placeholder="https://api.deepseek.com"
+                style={{ width: '100%', boxSizing: 'border-box', border: `1px solid ${COLORS.line}`, borderRadius: 10, padding: '10px 12px', background: '#fff', color: COLORS.ink }}
+              />
+            </label>
+            <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+              <button className="btn btn-primary btn-sm" type="button" onClick={handleSaveApiConfig} style={{ flex: 1 }}>保存</button>
+              <button className="btn btn-ghost btn-sm" type="button" onClick={handleClearApiConfig}>清除</button>
+            </div>
+            <div style={{ color: COLORS.muted, fontSize: 12, lineHeight: 1.7, marginTop: 10 }}>
+              临时配置仅保存在当前浏览器，用于本地演示；正式提交仍建议使用 `.env`。
+            </div>
           </div>
         </aside>
 
