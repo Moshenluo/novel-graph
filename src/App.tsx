@@ -1369,52 +1369,6 @@ function App() {
               <div className="upload-title">复制粘贴</div>
               <div className="upload-hint">把小说正文粘贴到右侧输入框。建议保留章节标题，便于后续确认。</div>
             </div>
-            <div className="target-selector">
-              <div className="target-selector-head">
-                <span>改编目标</span>
-                <strong>{adaptationTarget.shortName}</strong>
-              </div>
-              <div className="target-options">
-                {ADAPTATION_TARGETS.map((target) => (
-                  <button
-                    key={target.id}
-                    type="button"
-                    className={`target-option${adaptationTargetId === target.id ? ' target-option--active' : ''}`}
-                    onClick={() => {
-                      setAdaptationTargetId(target.id);
-                      setScreenplayYaml('');
-                      setGenerationStats(createEmptyGenerationStats());
-                    }}
-                  >
-                    <span>{target.name}</span>
-                    <small>{target.description}</small>
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="target-selector">
-              <div className="target-selector-head">
-                <span>改编风格</span>
-                <strong>{adaptationStyle.shortName}</strong>
-              </div>
-              <div className="style-options">
-                {ADAPTATION_STYLES.map((style) => (
-                  <button
-                    key={style.id}
-                    type="button"
-                    className={`target-option${adaptationStyleId === style.id ? ' target-option--active' : ''}`}
-                    onClick={() => {
-                      setAdaptationStyleId(style.id);
-                      setScreenplayYaml('');
-                      setGenerationStats(createEmptyGenerationStats());
-                    }}
-                  >
-                    <span>{style.name}</span>
-                    <small>{style.tone}</small>
-                  </button>
-                ))}
-              </div>
-            </div>
             {/* Fix: reset input.value after each selection so that re-selecting the same
                 file triggers onChange again (browsers suppress the event otherwise) */}
             <input
@@ -1688,6 +1642,63 @@ function App() {
                 </span>
               </button>
             ))}
+          </div>
+
+          <div className="sidebar-settings">
+            <div className="sidebar-settings-title">改编设置</div>
+            <details className="sidebar-select">
+              <summary>
+                <span>
+                  <small>改编目标</small>
+                  <strong>{adaptationTarget.name}</strong>
+                </span>
+                <b>选择</b>
+              </summary>
+              <div className="sidebar-select-menu">
+                {ADAPTATION_TARGETS.map((target) => (
+                  <button
+                    key={target.id}
+                    type="button"
+                    className={`sidebar-select-option${adaptationTargetId === target.id ? ' sidebar-select-option--active' : ''}`}
+                    onClick={() => {
+                      setAdaptationTargetId(target.id);
+                      setScreenplayYaml('');
+                      setGenerationStats(createEmptyGenerationStats());
+                    }}
+                  >
+                    <span>{target.name}</span>
+                    <small>{target.description}</small>
+                  </button>
+                ))}
+              </div>
+            </details>
+
+            <details className="sidebar-select">
+              <summary>
+                <span>
+                  <small>改编风格</small>
+                  <strong>{adaptationStyle.name}</strong>
+                </span>
+                <b>选择</b>
+              </summary>
+              <div className="sidebar-select-menu">
+                {ADAPTATION_STYLES.map((style) => (
+                  <button
+                    key={style.id}
+                    type="button"
+                    className={`sidebar-select-option${adaptationStyleId === style.id ? ' sidebar-select-option--active' : ''}`}
+                    onClick={() => {
+                      setAdaptationStyleId(style.id);
+                      setScreenplayYaml('');
+                      setGenerationStats(createEmptyGenerationStats());
+                    }}
+                  >
+                    <span>{style.name}</span>
+                    <small>{style.tone}</small>
+                  </button>
+                ))}
+              </div>
+            </details>
           </div>
 
           <div className="status-panel">
