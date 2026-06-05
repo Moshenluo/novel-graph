@@ -1006,7 +1006,7 @@ function App() {
   const renderStepContent = () => {
     if (activeStep === 0) {
       return (
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(360px, 0.9fr) minmax(420px, 1.1fr)', gap: 24 }}>
+        <div className="studio-grid-input">
           <div style={{ display: 'grid', gap: 16 }}>
             {/* 上传区：支持点击 + 拖拽导入 */}
             <div
@@ -1112,7 +1112,7 @@ function App() {
 
     if (activeStep === 2) {
       return (
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(520px, 1fr) 320px', gap: 22 }}>
+        <div className="studio-grid-draft">
           <div>
             <h3 style={{ margin: '0 0 8px', fontSize: 24, fontWeight: 950 }}>剧本草案</h3>
             <p style={{ margin: '0 0 18px', color: COLORS.muted }}>这里展示系统即将写入 YAML 的场景摘要、动作节拍和对白数量。</p>
@@ -1184,7 +1184,7 @@ function App() {
     }
 
     return (
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(520px, 1fr) 260px', gap: 22 }}>
+      <div className="studio-grid-export">
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
             <h3 style={{ margin: 0, fontSize: 24, fontWeight: 950 }}>YAML 导出</h3>
@@ -1195,7 +1195,7 @@ function App() {
           </div>
           <pre style={{ minHeight: 560, margin: 0, padding: 20, border: `2px solid ${COLORS.line}`, borderRadius: 14, background: '#0f172a', color: '#e2e8f0', overflow: 'auto', whiteSpace: 'pre-wrap', fontSize: 13, lineHeight: 1.65 }}>{screenplayYaml || '点击下方"生成 YAML"后显示结构化剧本初稿。'}</pre>
         </div>
-        <div style={{ padding: 18, borderRadius: 14, border: `1px solid ${COLORS.line}`, background: '#fff', alignSelf: 'start' }}>
+        <div className="studio-panel studio-panel-pad" style={{ alignSelf: 'start' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
             <h3 style={{ margin: 0, fontSize: 18, fontWeight: 950 }}>YAML 质量检查</h3>
             <a
@@ -1229,13 +1229,13 @@ function App() {
   };
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--cream)', color: 'var(--ink)' }}>
+    <div style={{ minHeight: '100vh', color: 'var(--ink)' }}>
       <header className="app-header">
         <div className="header-inner">
         <a className="header-brand" href="#" onClick={(e) => { e.preventDefault(); setActiveStep(0); setNovelInput(''); setScreenplayYaml(''); setStatus(''); setError(''); setAiCharacters(null); setGenerationStats(createEmptyGenerationStats()); aiRunRef.current = ''; }}>
           <div className="header-logo">🎬</div>
           <div>
-            <div className="header-title"> novel-graph</div>
+            <div className="header-title">小说转剧本 YAML</div>
             <div className="header-subtitle">AI 小说转剧本 · 结构化 YAML 导出</div>
           </div>
         </a>
@@ -1295,15 +1295,16 @@ function App() {
 
         <section className="app-main">
           <div className="main-card fade-in">
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 20, alignItems: 'flex-start', marginBottom: 24 }}>
+            <div className="studio-topline">
               <div>
+                <div className="studio-kicker">Screenplay Conversion Workspace</div>
                 <h2 className="page-title">
                   <span style={{ width: 56, height: 56, borderRadius: 14, background: 'var(--gold-light)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 34, marginRight: 14 }}>{activeStep === 0 ? '📥' : activeStep === 1 ? '📚' : activeStep === 2 ? '🎭' : '🧾'}</span>
                   {steps[activeStep].title}
                 </h2>
                 <p className="page-desc">{steps[activeStep].desc}，最后输出可编辑的 YAML 剧本初稿。</p>
               </div>
-              <div style={{ display: 'flex', gap: 10 }}>
+              <div className="studio-toolbar">
                 {activeStep > 0 && <button className="btn btn-ghost btn-sm" onClick={() => setActiveStep((step) => Math.max(0, step - 1))}>上一步</button>}
                 <button className="btn btn-ghost btn-sm" onClick={() => { setNovelInput(''); setScreenplayYaml(''); setStatus(''); setError(''); setImportedFileName(''); setAiCharacters(null); setGenerationStats(createEmptyGenerationStats()); aiRunRef.current = ''; setActiveStep(0); }}>重置</button>
                 <button className="btn btn-primary" onClick={activeStep === 3 ? generateYaml : goNext}>{activeStep === 3 ? (aiAvailable ? 'AI 增强重新生成' : '重新生成 YAML') : activeStep === 2 ? (aiAvailable ? 'AI 生成 YAML' : '生成 YAML') : '下一步'}</button>
