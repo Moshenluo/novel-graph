@@ -708,6 +708,73 @@ body {
 }
 
 /* ---------- Character Graph (sidebar) ---------- */
+.character-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.character-source-badge {
+  flex-shrink: 0;
+  padding: 5px 9px;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 900;
+  border: 1px solid var(--line);
+  background: #fffdf8;
+  color: var(--ink-light);
+}
+
+.character-source-badge--checking {
+  border-color: rgba(184,138,68,0.42);
+  background: rgba(184,138,68,0.11);
+  color: var(--gold-dim);
+}
+
+.character-source-badge--ai {
+  border-color: rgba(102,120,95,0.35);
+  background: rgba(102,120,95,0.12);
+  color: var(--sage);
+}
+
+.character-graph-card {
+  position: relative;
+  padding: 16px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: #fff;
+  transition: border-color 0.24s ease, box-shadow 0.24s ease, background 0.24s ease;
+}
+
+.character-graph-card--checking {
+  border-color: rgba(184,138,68,0.42);
+  box-shadow: 0 0 0 3px rgba(184,138,68,0.08);
+}
+
+.character-graph-card--checking::after {
+  content: '';
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  top: 72px;
+  height: 3px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: linear-gradient(90deg, transparent, rgba(184,138,68,0.72), transparent);
+  background-size: 180% 100%;
+  animation: characterChecking 1.25s ease-in-out infinite;
+}
+
+.character-graph-card--ai {
+  border-color: rgba(102,120,95,0.32);
+}
+
+.character-list-transition {
+  animation: characterListFade 0.32s ease both;
+}
+
 .char-graph-panel {
   padding: 18px;
   border-radius: var(--radius-md);
@@ -761,6 +828,14 @@ body {
 @keyframes slideInLeft {
   from { opacity: 0; transform: translateX(-12px); }
   to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes characterListFade {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes characterChecking {
+  from { background-position: 180% 0; }
+  to   { background-position: -180% 0; }
 }
 .fade-in { animation: fadeInUp 0.4s cubic-bezier(.4,0,.2,1) both; }
 .fade-in-slow { animation: fadeIn 0.6s ease both; }

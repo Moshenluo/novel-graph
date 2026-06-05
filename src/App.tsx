@@ -558,6 +558,14 @@ function App() {
     return extractCharacters(chapters).map((c) => ({ name: c.name, role: c.role }));
   }, [aiCharacters, chapters]);
 
+  const characterPanelMode = aiAvailable && aiLoading && !aiCharacters
+    ? 'checking'
+    : aiCharacters && aiCharacters.length > 0 ? 'ai' : 'local';
+
+  const characterPanelLabel = characterPanelMode === 'checking'
+    ? 'AI 校对中'
+    : characterPanelMode === 'ai' ? 'AI 已校对' : '规则初筛';
+
   const graph = useMemo(() => {
     // 图谱展示候选人物在同一章节内共同出现的线索。
     const characters = effectiveCharacters.map((c, i) => ({
@@ -642,7 +650,7 @@ function App() {
     };
     const characterSourceLabel: Record<CharacterSource, string> = {
       none: '待确认',
-      local: '本地候选',
+      local: '规则初筛',
       ai: 'AI 提取',
     };
     return [
@@ -1187,9 +1195,20 @@ function App() {
             </div>
           </div>
           <div>
-            <h3 style={{ margin: '0 0 12px', fontSize: 20, fontWeight: 950 }}>人物共现图谱</h3>
-            <div style={{ padding: 16, borderRadius: 14, border: `1px solid ${COLORS.line}`, background: '#fff' }}>
-              <div style={{ color: COLORS.muted, fontSize: 13, lineHeight: 1.7 }}>图谱展示人名候选和同章出现线索，不等同于人工确认的角色设定。</div>
+            <div className="character-panel-head">
+              <h3 style={{ margin: 0, fontSize: 20, fontWeight: 950 }}>人物共现图谱</h3>
+              <span className={`character-source-badge character-source-badge--${characterPanelMode}`}>
+                {characterPanelLabel}
+              </span>
+            </div>
+            <div className={`character-graph-card character-graph-card--${characterPanelMode}`}>
+              <div style={{ color: COLORS.muted, fontSize: 13, lineHeight: 1.7 }}>
+                {characterPanelMode === 'checking'
+                  ? '当前先展示上传文本的规则初筛结果，AI 正在校对人物名单，完成后会平滑更新图谱。'
+                  : characterPanelMode === 'ai'
+                    ? '图谱基于 AI 校对后的人物候选展示同章出现线索，仍需作者最终确认。'
+                    : '图谱展示上传文本的规则初筛人名和同章出现线索，不等同于人工确认的角色设定。'}
+              </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8, marginTop: 14 }}>
                 {[
                   ['人物', `${graph.nodes.length} 个`],
@@ -1202,7 +1221,11 @@ function App() {
                   </div>
                 ))}
               </div>
-              <div style={{ marginTop: 16, display: 'grid', gap: 10, maxHeight: 330, overflow: 'auto', paddingRight: 4 }}>
+              <div
+                key={characterPanelMode}
+                className="character-list-transition"
+                style={{ marginTop: 16, display: 'grid', gap: 10, maxHeight: 330, overflow: 'auto', paddingRight: 4 }}
+              >
                 {graph.nodes.length === 0 ? <div style={{ color: COLORS.muted }}>暂无人物候选</div> : graph.nodes.map((node) => (
                   <div key={node.id} style={{ display: 'grid', gridTemplateColumns: '32px 1fr', gap: 10, alignItems: 'start' }}>
                     <span style={{ width: 32, height: 32, borderRadius: 999, background: node.role === 'protagonist' ? COLORS.accent : COLORS.soft, color: node.role === 'protagonist' ? '#fff' : COLORS.ink, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 950 }}>{node.name.slice(0, 1)}</span>
