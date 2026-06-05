@@ -43,6 +43,16 @@ interface YamlQualityCheck {
   passed: boolean;
 }
 
+interface ChapterReadiness {
+  index: number;
+  title: string;
+  wordCount: number;
+  sentenceCount: number;
+  dialogueCount: number;
+  warnings: string[];
+  ready: boolean;
+}
+
 const COLORS = {
   ink: '#0f172a',
   muted: '#64748b',
@@ -614,6 +624,32 @@ function App() {
     ];
   }, [chapters.length, screenplayYaml]);
 
+  const chapterReadiness = useMemo<ChapterReadiness[]>(() => chapters.map((chapter) => {
+    const sentences = chapter.content.split(/[。！？!?]\s*/).map((item) => item.trim()).filter(Boolean);
+    const dialogueCount = extractQuotedDialogue(chapter.content).length;
+    const warnings = [
+      chapter.content.length < 120 ? '正文偏短，场景冲突可能不足' : '',
+      sentences.length < 3 ? '可提炼节拍偏少' : '',
+      dialogueCount === 0 ? '未识别到对白，可后续手动补充' : '',
+    ].filter(Boolean);
+
+    return {
+      index: chapter.index,
+      title: chapter.title,
+      wordCount: chapter.content.length,
+      sentenceCount: sentences.length,
+      dialogueCount,
+      warnings,
+      ready: warnings.length === 0,
+    };
+  }), [chapters]);
+
+  const chapterReadinessSummary = useMemo(() => {
+    const readyCount = chapterReadiness.filter((chapter) => chapter.ready).length;
+    const warningCount = chapterReadiness.reduce((sum, chapter) => sum + chapter.warnings.length, 0);
+    return { readyCount, warningCount };
+  }, [chapterReadiness]);
+
   // AI 人物提取：章节变化时自动触发
   const aiRunRef = useRef<string>('');
   useEffect(() => {
@@ -947,15 +983,46 @@ function App() {
             </div>
             <button onClick={() => setActiveStep(0)} style={{ padding: '11px 14px', border: `1px solid ${COLORS.line}`, borderRadius: 10, background: '#fff', fontWeight: 850, cursor: 'pointer' }}>返回修改文本</button>
           </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 14 }}>
-            {chapters.map((chapter) => (
-              <div key={chapter.index} className="card" style={{ padding: 18, border: `1px solid ${COLORS.line}`, borderRadius: 14, background: '#fff' }}>
-                <div style={{ color: COLORS.accent, fontSize: 13, fontWeight: 950 }}>第 {chapter.index} 章</div>
-                <div style={{ marginTop: 8, fontSize: 18, fontWeight: 950 }}>{chapter.title}</div>
-                <p style={{ color: COLORS.muted, lineHeight: 1.6, minHeight: 46 }}>{compactText(chapter.content, 82)}</p>
-                <div style={{ fontSize: 13, color: COLORS.muted }}>字数约 {chapter.content.length}</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12, marginBottom: 16 }}>
+            {[
+              ['章节就绪', `${chapterReadinessSummary.readyCount}/${chapters.length}`, chapterReadinessSummary.readyCount === chapters.length && chapters.length >= 3],
+              ['待关注项', `${chapterReadinessSummary.warningCount} 项`, chapterReadinessSummary.warningCount === 0],
+              ['最低要求', canContinue ? '已满足' : '至少 3 章', canContinue],
+            ].map(([label, value, passed]) => (
+              <div key={String(label)} style={{ padding: 14, borderRadius: 12, border: `1px solid ${COLORS.line}`, background: '#fff' }}>
+                <div style={{ color: COLORS.muted, fontSize: 12, fontWeight: 850 }}>{label}</div>
+                <div style={{ marginTop: 6, color: passed ? COLORS.success : COLORS.danger, fontSize: 20, fontWeight: 950 }}>{value}</div>
               </div>
             ))}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 14 }}>
+            {chapters.map((chapter) => {
+              const readiness = chapterReadiness.find((item) => item.index === chapter.index);
+              return (
+                <div key={chapter.index} className="card" style={{ padding: 18, border: `1px solid ${COLORS.line}`, borderRadius: 14, background: '#fff' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+                    <div style={{ color: COLORS.accent, fontSize: 13, fontWeight: 950 }}>第 {chapter.index} 章</div>
+                    <div style={{ color: readiness?.ready ? COLORS.success : COLORS.danger, fontSize: 12, fontWeight: 950 }}>
+                      {readiness?.ready ? '就绪' : '需关注'}
+                    </div>
+                  </div>
+                  <div style={{ marginTop: 8, fontSize: 18, fontWeight: 950 }}>{chapter.title}</div>
+                  <p style={{ color: COLORS.muted, lineHeight: 1.6, minHeight: 46 }}>{compactText(chapter.content, 82)}</p>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, fontSize: 12, color: COLORS.muted }}>
+                    <span>字数 {readiness?.wordCount ?? chapter.content.length}</span>
+                    <span>句子 {readiness?.sentenceCount ?? 0}</span>
+                    <span>对白 {readiness?.dialogueCount ?? 0}</span>
+                  </div>
+                  {readiness && readiness.warnings.length > 0 && (
+                    <div style={{ display: 'grid', gap: 6, marginTop: 12 }}>
+                      {readiness.warnings.map((warning) => (
+                        <div key={warning} style={{ padding: '7px 9px', borderRadius: 8, background: '#fff7ed', color: '#9a3412', fontSize: 12, lineHeight: 1.5 }}>{warning}</div>
+                      ))}
+                    </div>
+                  )}
+              </div>
+              );
+            })}
           </div>
         </div>
       );
