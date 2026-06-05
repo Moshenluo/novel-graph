@@ -347,6 +347,9 @@ interface AISceneEnrichment {
   dramatic_purpose: string;
   source_excerpt: string;
   confidence: 'low' | 'medium' | 'high';
+  camera_direction: string;
+  character_action: string;
+  subtext_cue: string;
   beats: string[];
   suggested_dialogue: string[];
 }
@@ -379,6 +382,9 @@ ${style.preserveSource ? `当前改编风格：
   "dramatic_purpose": "本场景在剧本结构中的作用，例如引出危机、推进关系、制造悬念",
   "source_excerpt": "最能支持本场景判断的一小段原文摘录，不超过80字",
   "confidence": "low/medium/high，表示场景判断和推理可靠度",
+  "camera_direction": "镜头或舞台调度建议，说明该场景如何被看见或呈现",
+  "character_action": "人物可表演动作，避免只写心理活动",
+  "subtext_cue": "潜台词提示，说明对白或沉默背后的真实意图",
   "beats": ["动作节拍1：人物做什么", "动作节拍2", "动作节拍3", "动作节拍4", "动作节拍5"],
   "suggested_dialogue": ["可选新增对白建议1", "可选新增对白建议2"]
 }
@@ -388,6 +394,7 @@ ${style.preserveSource ? `当前改编风格：
 - summary 要突出冲突和张力
 - 场景设计需要贴合当前改编目标，不要输出泛泛的小说摘要
 - suggested_dialogue 和 beats 需要贴合当前改编风格
+- camera_direction、character_action、subtext_cue 必须可被作者直接编辑为剧本调度，不要只写“待补充”
 - conflict、dramatic_purpose、suggested_dialogue 可以基于原文合理推理，但不要伪称为原文直接出现
 - 语言使用流畅中文
 
@@ -409,6 +416,9 @@ ${style.preserveSource ? `当前改编风格：
       dramatic_purpose: parsed.dramatic_purpose || 'AI 未明确给出戏剧目的，待作者核对',
       source_excerpt: compactText(parsed.source_excerpt || chapter.content, 80),
       confidence: parsed.confidence === 'low' || parsed.confidence === 'high' ? parsed.confidence : 'medium',
+      camera_direction: compactText(parsed.camera_direction || '以中景建立场景关系，关键转折处切近人物反应。', 120),
+      character_action: compactText(parsed.character_action || '让主要人物通过行动回应冲突，减少纯心理叙述。', 120),
+      subtext_cue: compactText(parsed.subtext_cue || '对白下保留未说出口的真实意图，供作者后续打磨。', 120),
       beats: Array.isArray(parsed.beats) && parsed.beats.length > 0 ? parsed.beats : fallbackSentences,
       suggested_dialogue: Array.isArray(parsed.suggested_dialogue) ? parsed.suggested_dialogue : [],
     };
@@ -421,6 +431,9 @@ ${style.preserveSource ? `当前改编风格：
       dramatic_purpose: '待作者确认本场景在剧本结构中的作用',
       source_excerpt: compactText(chapter.content, 80),
       confidence: 'low',
+      camera_direction: 'AI 场景分析失败，待作者补充镜头或舞台调度',
+      character_action: 'AI 场景分析失败，待作者补充人物可表演动作',
+      subtext_cue: 'AI 场景分析失败，待作者补充对白潜台词',
       beats: chapter.content.split(/[。！？!?]/).filter(Boolean).slice(0, 5).map((s) => compactText(s.trim(), 110)),
       suggested_dialogue: [],
     };
@@ -675,6 +688,10 @@ const convertNovelToScreenplayYaml = (text: string, target: AdaptationTarget, st
       `    location: ${yamlScalar(scene.location)}`,
       `    time: ${yamlScalar(scene.time)}`,
       `    summary: ${yamlScalar(scene.summary)}`,
+      '    staging:',
+      '      camera: "用中景建立人物与空间关系，关键情绪处切近反应"',
+      '      action: "补充人物可表演动作，减少纯心理叙述"',
+      '      subtext: "标注对白背后的真实意图，供作者继续打磨"',
       '    beats:',
       ...scene.beats.map((beat) => [
         `      - id: "${beat.id}"`,
@@ -688,8 +705,7 @@ const convertNovelToScreenplayYaml = (text: string, target: AdaptationTarget, st
         '        subtext: "待作者打磨"',
       ].join('\n')) : ['      []']),
       '    revision_notes:',
-      '      - "检查场景冲突是否足够清晰"',
-      '      - "补充镜头调度、人物动作和潜台词"',
+      '      - "检查 staging.camera、staging.action、staging.subtext 是否符合作者想要的呈现方式"',
     ].join('\n')),
     'adaptation_notes:',
     '  - "本稿为浏览器本地启发式转换结果，不调用外部接口。"',
@@ -906,6 +922,11 @@ function App() {
         passed: dialogueCount > 0,
       },
       {
+        label: '调度层',
+        detail: screenplayYaml.includes('staging:') ? '已包含镜头/动作/潜台词' : '待生成',
+        passed: screenplayYaml.includes('staging:'),
+      },
+      {
         label: 'AI 推理',
         detail: screenplayYaml.includes('ai_inference:') ? '已标记需审核' : expectsAiInference ? '待写入' : '本地模式不要求',
         passed: !expectsAiInference || screenplayYaml.includes('ai_inference:'),
@@ -954,6 +975,12 @@ function App() {
         title: '对白打磨',
         detail: dialogueCount > 0 ? `识别到 ${dialogueCount} 条对白线索` : '未识别到对白，剧本初稿需要作者补写台词',
         status: dialogueCount > 0 ? 'review' : 'todo',
+      },
+      {
+        id: 'staging',
+        title: '调度与表演',
+        detail: screenplayYaml.includes('staging:') ? '已生成镜头调度、人物动作和潜台词提示' : '生成 YAML 后检查调度层',
+        status: screenplayYaml.includes('staging:') ? 'review' : 'todo',
       },
       {
         id: 'ai-evidence',
@@ -1149,6 +1176,9 @@ function App() {
               dramatic_purpose: 'AI 场景分析失败，待作者确认戏剧作用',
               source_excerpt: compactText(chapter.content, 80),
               confidence: 'low',
+              camera_direction: 'AI 场景分析失败，待作者补充镜头或舞台调度',
+              character_action: 'AI 场景分析失败，待作者补充人物可表演动作',
+              subtext_cue: 'AI 场景分析失败，待作者补充对白潜台词',
               beats: chapter.content.split(/[。！？!?]/).filter(Boolean).slice(0, 5).map((s) => compactText(s.trim(), 110)),
               suggested_dialogue: [],
             });
@@ -1178,6 +1208,9 @@ function App() {
             dramaticPurpose: enrichment.dramatic_purpose,
             sourceExcerpt: enrichment.source_excerpt,
             confidence: enrichment.confidence,
+            cameraDirection: enrichment.camera_direction,
+            characterAction: enrichment.character_action,
+            subtextCue: enrichment.subtext_cue,
             suggestedDialogue: enrichment.suggested_dialogue ?? [],
             beats: enrichment.beats
               .filter((b) => b.trim())
@@ -1238,6 +1271,10 @@ function App() {
             ...(scene.suggestedDialogue.length > 0
               ? scene.suggestedDialogue.slice(0, 3).map((line) => `        - ${yamlScalar(line)}`)
               : ['        []']),
+            '    staging:',
+            `      camera: ${yamlScalar(scene.cameraDirection)}`,
+            `      action: ${yamlScalar(scene.characterAction)}`,
+            `      subtext: ${yamlScalar(scene.subtextCue)}`,
             '    beats:',
             ...(scene.beats.length > 0
               ? scene.beats.map((beat) => [
@@ -1256,7 +1293,7 @@ function App() {
               : ['      []]']),
             '    revision_notes:',
             '      - "AI 初稿仅供参考，请检查场景冲突是否足够清晰"',
-            '      - "建议补充镜头调度、人物动作和潜台词"',
+            '      - "请核对 staging 中的镜头调度、人物动作和潜台词是否符合作者意图"',
           ].join('\n')),
           'adaptation_notes:',
           '  - "本稿由 DeepSeek AI 辅助生成，人物提取与场景分析均经 AI 处理。"',

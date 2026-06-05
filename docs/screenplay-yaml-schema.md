@@ -103,6 +103,10 @@ scenes:
       dramatic_purpose: "引出主线悬念，并推动主角踏上调查。"
       suggested_dialogue:
         - "如果这封信是真的，我就再也不能装作什么都没发生。"
+    staging:
+      camera: "用中景建立旧书店空间，信件出现时切近林秋反应。"
+      action: "林秋先回避信件，随后被沈砚一句话迫使伸手接过。"
+      subtext: "林秋表面拒绝调查，真实意图是害怕真相改变自己。"
     beats:
       - id: "beat_1_1"
         action: "雨水敲打旧书店玻璃"
@@ -126,6 +130,7 @@ scenes:
 | `ai_inference` | object | AI 基于原文理解补充的冲突、戏剧目的和建议对白。 |
 | `ai_inference.source_excerpt` | string | 支持本场景判断的一小段原文摘录，便于作者回看依据。 |
 | `ai_inference.confidence` | string | 场景推理置信度，取值为 `low`、`medium`、`high`。 |
+| `staging` | object | 镜头或舞台调度、人物动作和潜台词提示。 |
 | `beats` | array | 动作节拍，按事件推进拆分。 |
 | `dialogue` | array | 对白列表。 |
 | `revision_notes` | array | 二次创作提醒。 |
@@ -185,6 +190,7 @@ review_checklist:
 6. 标记 AI 推理字段：人物动机、弧光、场景冲突和建议对白常常需要超出原文直述进行改编判断，因此使用 `inference_source`、`ai_inference.source` 和 `needs_author_review` 明确提醒作者审核，避免把 AI 推理误当作原文事实。
 7. 保留依据和置信度：`source_excerpt` 让作者能快速回到原文核对，`confidence` 让评审和作者知道哪些自动判断更需要优先检查。
 8. 输出审稿清单：`review_checklist` 把"自动初稿需要人工打磨"落到可执行事项，符合作者真实改编工作流。
+9. 增加调度层：`staging.camera`、`staging.action` 和 `staging.subtext` 直接回应剧本改写中最常见的镜头、动作和潜台词打磨需求，避免只给作者留下空泛提醒。
 
 ## 支持的章节识别格式
 
