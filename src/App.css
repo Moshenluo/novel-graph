@@ -518,6 +518,74 @@ body {
   font-weight: 900;
 }
 
+.target-selector {
+  padding: 18px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: rgba(255,253,248,0.88);
+  box-shadow: var(--shadow-sm);
+}
+
+.target-selector-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 950;
+}
+
+.target-selector-head strong {
+  padding: 4px 8px;
+  border-radius: 7px;
+  background: var(--rail);
+  color: #fffaf0;
+  font-size: 12px;
+}
+
+.target-options {
+  display: grid;
+  gap: 8px;
+}
+
+.target-option {
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px solid var(--line-light);
+  border-radius: 8px;
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.18s ease, background 0.18s ease, transform 0.18s ease;
+}
+
+.target-option:hover {
+  border-color: rgba(184,138,68,0.4);
+  transform: translateY(-1px);
+}
+
+.target-option span {
+  display: block;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.target-option small {
+  display: block;
+  margin-top: 3px;
+  color: #837b70;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.target-option--active {
+  border-color: rgba(184,138,68,0.58);
+  background: rgba(184,138,68,0.1);
+}
+
 /* ---------- Textarea ---------- */
 .novel-textarea {
   width: 100%;
