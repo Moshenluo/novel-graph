@@ -22,6 +22,7 @@ interface ScreenplayCharacter {
   motivation?: string;
   arc?: string;
   evidence?: string;
+  confidence?: 'low' | 'medium' | 'high';
 }
 
 interface CharacterInput {
@@ -30,6 +31,7 @@ interface CharacterInput {
   motivation?: string;
   arc?: string;
   evidence?: string;
+  confidence?: string;
 }
 
 type GenerationMode = 'idle' | 'local' | 'ai' | 'mixed';
@@ -132,6 +134,7 @@ interface AICharacter {
   evidence: string;
   motivation?: string;
   arc?: string;
+  confidence?: string;
 }
 
 const aiExtractCharacters = async (chapters: NovelChapter[]): Promise<AICharacter[]> => {
@@ -148,11 +151,11 @@ const aiExtractCharacters = async (chapters: NovelChapter[]): Promise<AICharacte
    - 称呼/绰号/代号（如"狂人"、"孔乙己"、"掌柜"、"赵太爷"、"大哥"）
    - 重复出现的职称代称，前提是它们指向具体个人
 2. 不要提取：地名、机构名、物品名、泛指群体（如"众人"、"大家"）
-3. 对每个角色输出：name（原文中的称呼）、role（主角protagonist/重要配角major_supporting/配角supporting/龙套minor）、evidence（一句原文证据，说明你为什么认为这是角色）、motivation（基于文本推理的人物动机）、arc（基于文本推理的人物弧光）
+3. 对每个角色输出：name（原文中的称呼）、role（主角protagonist/重要配角major_supporting/配角supporting/龙套minor）、evidence（一句原文证据，说明你为什么认为这是角色）、motivation（基于文本推理的人物动机）、arc（基于文本推理的人物弧光）、confidence（low/medium/high，表示角色判断和推理可靠度）
 4. 按重要程度从高到低排列
 
 输出纯 JSON 数组（不要带 markdown 代码块标记）：
-[{"name":"狂人","role":"protagonist","evidence":"...","motivation":"...","arc":"...","frequency":15}]`;
+[{"name":"狂人","role":"protagonist","evidence":"...","motivation":"...","arc":"...","confidence":"high","frequency":15}]`;
 
   const result = await callDeepSeek(systemPrompt, truncatedText);
 
@@ -176,7 +179,7 @@ const aiExtractCharacters = async (chapters: NovelChapter[]): Promise<AICharacte
     if (!names) throw new Error('AI 人物提取结果解析失败');
     return names.slice(0, 15).map((n, i) => {
       const nameMatch = n.match(/"([^"]+)"$/);
-      return { name: nameMatch?.[1] ?? `角色${i + 1}`, role: 'supporting', evidence: '' };
+      return { name: nameMatch?.[1] ?? `角色${i + 1}`, role: 'supporting', evidence: '', confidence: 'low' };
     });
   }
 };
@@ -187,6 +190,8 @@ interface AISceneEnrichment {
   summary: string;
   conflict: string;
   dramatic_purpose: string;
+  source_excerpt: string;
+  confidence: 'low' | 'medium' | 'high';
   beats: string[];
   suggested_dialogue: string[];
 }
@@ -204,6 +209,8 @@ const aiEnrichScene = async (chapter: NovelChapter): Promise<AISceneEnrichment> 
   "summary": "场景摘要（2-3句话概括这个场景发生了什么，聚焦戏剧性冲突）",
   "conflict": "本场景的核心冲突，允许基于原文进行合理改编推理",
   "dramatic_purpose": "本场景在剧本结构中的作用，例如引出危机、推进关系、制造悬念",
+  "source_excerpt": "最能支持本场景判断的一小段原文摘录，不超过80字",
+  "confidence": "low/medium/high，表示场景判断和推理可靠度",
   "beats": ["动作节拍1：人物做什么", "动作节拍2", "动作节拍3", "动作节拍4", "动作节拍5"],
   "suggested_dialogue": ["可选新增对白建议1", "可选新增对白建议2"]
 }
@@ -230,6 +237,8 @@ const aiEnrichScene = async (chapter: NovelChapter): Promise<AISceneEnrichment> 
       summary: parsed.summary || compactText(chapter.content, 120),
       conflict: parsed.conflict || 'AI 未明确给出冲突，待作者核对',
       dramatic_purpose: parsed.dramatic_purpose || 'AI 未明确给出戏剧目的，待作者核对',
+      source_excerpt: compactText(parsed.source_excerpt || chapter.content, 80),
+      confidence: parsed.confidence === 'low' || parsed.confidence === 'high' ? parsed.confidence : 'medium',
       beats: Array.isArray(parsed.beats) && parsed.beats.length > 0 ? parsed.beats : fallbackSentences,
       suggested_dialogue: Array.isArray(parsed.suggested_dialogue) ? parsed.suggested_dialogue : [],
     };
@@ -240,6 +249,8 @@ const aiEnrichScene = async (chapter: NovelChapter): Promise<AISceneEnrichment> 
       summary: `待AI分析：${compactText(chapter.content, 120)}`,
       conflict: '待作者根据原文补充场景冲突',
       dramatic_purpose: '待作者确认本场景在剧本结构中的作用',
+      source_excerpt: compactText(chapter.content, 80),
+      confidence: 'low',
       beats: chapter.content.split(/[。！？!?]/).filter(Boolean).slice(0, 5).map((s) => compactText(s.trim(), 110)),
       suggested_dialogue: [],
     };
@@ -334,6 +345,11 @@ const normalizeCharacterRole = (role?: string): CharacterRole => {
   return 'supporting';
 };
 
+const normalizeConfidence = (value?: string): 'low' | 'medium' | 'high' => {
+  if (value === 'low' || value === 'high') return value;
+  return 'medium';
+};
+
 const normalizeCharacterName = (value: string) => value
   .replace(/^[\s"'“”‘’《》【】（）()，,。！？!?:：；;、]+|[\s"'“”‘’《》【】（）()，,。！？!?:：；;、]+$/g, '')
   .trim();
@@ -369,6 +385,7 @@ const toScreenplayCharacters = (characters: CharacterInput[]): ScreenplayCharact
       motivation: character.motivation ? compactText(character.motivation, 120) : undefined,
       arc: character.arc ? compactText(character.arc, 120) : undefined,
       evidence: character.evidence ? compactText(character.evidence, 120) : undefined,
+      confidence: normalizeConfidence(character.confidence),
     });
   }
   return normalized.slice(0, 15);
@@ -680,6 +697,11 @@ function App() {
         passed: !expectsAiInference || screenplayYaml.includes('ai_inference:'),
       },
       {
+        label: '原文依据',
+        detail: screenplayYaml.includes('source_excerpt:') ? '已写入摘录' : expectsAiInference ? '待写入' : '本地模式不要求',
+        passed: !expectsAiInference || screenplayYaml.includes('source_excerpt:'),
+      },
+      {
         label: '打磨说明',
         detail: screenplayYaml.includes('adaptation_notes:') ? '已包含' : '待生成',
         passed: screenplayYaml.includes('adaptation_notes:'),
@@ -724,7 +746,14 @@ function App() {
     setAiLoading(true);
     aiExtractCharacters(chapters)
       .then((chars) => {
-        setAiCharacters(chars.map((c) => ({ name: c.name, role: c.role, motivation: c.motivation, arc: c.arc, evidence: c.evidence })));
+        setAiCharacters(chars.map((c) => ({
+          name: c.name,
+          role: c.role,
+          motivation: c.motivation,
+          arc: c.arc,
+          evidence: c.evidence,
+          confidence: c.confidence,
+        })));
         setAiLoading(false);
       })
       .catch((err) => {
@@ -741,7 +770,14 @@ function App() {
     setAiLoading(true);
     try {
       const chars = await aiExtractCharacters(chapters);
-      const normalized = chars.map((c) => ({ name: c.name, role: c.role, motivation: c.motivation, arc: c.arc, evidence: c.evidence }));
+      const normalized = chars.map((c) => ({
+        name: c.name,
+        role: c.role,
+        motivation: c.motivation,
+        arc: c.arc,
+        evidence: c.evidence,
+        confidence: c.confidence,
+      }));
       setAiCharacters(normalized);
       return normalized;
     } catch (err) {
@@ -841,6 +877,8 @@ function App() {
               summary: compactText(chapter.content.split(/[。！？!?]/).filter(Boolean).slice(0, 2).join('。'), 120),
               conflict: 'AI 场景分析失败，待作者根据原文补充冲突',
               dramatic_purpose: 'AI 场景分析失败，待作者确认戏剧作用',
+              source_excerpt: compactText(chapter.content, 80),
+              confidence: 'low',
               beats: chapter.content.split(/[。！？!?]/).filter(Boolean).slice(0, 5).map((s) => compactText(s.trim(), 110)),
               suggested_dialogue: [],
             });
@@ -868,6 +906,8 @@ function App() {
             summary: enrichment.summary,
             conflict: enrichment.conflict,
             dramaticPurpose: enrichment.dramatic_purpose,
+            sourceExcerpt: enrichment.source_excerpt,
+            confidence: enrichment.confidence,
             suggestedDialogue: enrichment.suggested_dialogue ?? [],
             beats: enrichment.beats
               .filter((b) => b.trim())
@@ -887,6 +927,7 @@ function App() {
             `    motivation: ${yamlScalar(character.motivation ?? 'AI 推理不足，待作者补充')}`,
             `    arc: ${yamlScalar(character.arc ?? '待作者根据剧本方向补充人物弧光')}`,
             `    evidence: ${yamlScalar(character.evidence ?? '待作者核对原文依据')}`,
+            `    confidence: "${character.confidence ?? 'medium'}"`,
             '    inference_source: "ai_inferred"',
             '    needs_author_review: true',
           ].join('\n'))
@@ -912,6 +953,8 @@ function App() {
             '    ai_inference:',
             '      source: "ai_inferred"',
             '      needs_author_review: true',
+            `      source_excerpt: ${yamlScalar(scene.sourceExcerpt)}`,
+            `      confidence: "${scene.confidence}"`,
             `      conflict: ${yamlScalar(scene.conflict)}`,
             `      dramatic_purpose: ${yamlScalar(scene.dramaticPurpose)}`,
             '      suggested_dialogue:',
