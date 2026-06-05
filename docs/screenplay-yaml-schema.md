@@ -10,6 +10,7 @@ project: {}
 characters: []
 scenes: []
 adaptation_notes: []
+review_checklist: []
 ```
 
 | 字段 | 类型 | 必填 | 说明 |
@@ -19,6 +20,7 @@ adaptation_notes: []
 | `characters` | array | 是 | 从小说文本提取或由作者补充的人物表。 |
 | `scenes` | array | 是 | 剧本主体，每个元素对应一个可编辑场景。 |
 | `adaptation_notes` | array | 否 | 改编建议、自动化限制、后续打磨提醒。 |
+| `review_checklist` | array | 否 | 作者后续审稿和打磨事项。 |
 
 ## project
 
@@ -140,6 +142,25 @@ scenes:
 
 `adaptation_notes` 用于说明自动转换的边界和建议，例如"本稿为启发式自动转换结果"。这能提醒评审和作者：工具提供的是低门槛初稿，而不是替代作者判断的最终剧本。
 
+## review_checklist
+
+```yaml
+review_checklist:
+  - id: "review_ai_evidence"
+    item: "逐场核对 source_excerpt 是否支持 AI 推理结论"
+    status: "todo"
+    owner: "author"
+```
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `id` | string | 稳定审稿项标识，便于后续 PR 或版本追踪。 |
+| `item` | string | 作者下一步需要核查或打磨的事项。 |
+| `status` | string | 审稿状态，如 `todo`、`review`、`done`。 |
+| `owner` | string | 责任方，默认 `author`，强调最终判断由作者完成。 |
+
+设计原因：小说转剧本不是一次性生成最终稿。`review_checklist` 把自动生成后的人工打磨工作显式写进 YAML，让作者下载后仍能按清单继续核对人物、对白、AI 推理依据和低置信度内容。
+
 ## 设计取舍
 
 1. 使用 YAML 而不是纯文本：YAML 对作者更可读，也适合 Git diff 和 PR 审阅。
@@ -149,6 +170,7 @@ scenes:
 5. 加入 `revision_notes`：自动生成结果必然粗糙，Schema 主动把"待打磨"变成工作流的一部分。
 6. 标记 AI 推理字段：人物动机、弧光、场景冲突和建议对白常常需要超出原文直述进行改编判断，因此使用 `inference_source`、`ai_inference.source` 和 `needs_author_review` 明确提醒作者审核，避免把 AI 推理误当作原文事实。
 7. 保留依据和置信度：`source_excerpt` 让作者能快速回到原文核对，`confidence` 让评审和作者知道哪些自动判断更需要优先检查。
+8. 输出审稿清单：`review_checklist` 把"自动初稿需要人工打磨"落到可执行事项，符合作者真实改编工作流。
 
 ## 支持的章节识别格式
 

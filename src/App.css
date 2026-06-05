@@ -816,6 +816,79 @@ body {
 .export-checklist-item:last-child { border-bottom: none; }
 .export-check-icon { color: var(--sage); font-weight: 700; }
 
+/* ---------- Review Checklist ---------- */
+.review-checklist {
+  display: grid;
+  gap: 9px;
+}
+
+.review-checklist-item {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  gap: 10px;
+  align-items: start;
+  padding: 11px 10px;
+  border-radius: 9px;
+  border: 1px solid var(--line-light);
+  background: #fffdf8;
+}
+
+.review-checklist-mark {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-weight: 900;
+  background: var(--cream-alt);
+  color: var(--ink-light);
+}
+
+.review-checklist-title {
+  font-size: 13px;
+  font-weight: 950;
+  color: var(--ink);
+}
+
+.review-checklist-detail {
+  margin-top: 3px;
+  color: #837b70;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.review-checklist-item--passed {
+  border-color: rgba(102,120,95,0.28);
+  background: rgba(102,120,95,0.08);
+}
+
+.review-checklist-item--passed .review-checklist-mark {
+  background: rgba(102,120,95,0.16);
+  color: var(--sage);
+}
+
+.review-checklist-item--review {
+  border-color: rgba(184,138,68,0.32);
+  background: rgba(184,138,68,0.08);
+}
+
+.review-checklist-item--review .review-checklist-mark {
+  background: rgba(184,138,68,0.18);
+  color: var(--gold-dim);
+}
+
+.review-checklist-item--todo {
+  border-color: rgba(184,92,92,0.24);
+  background: rgba(184,92,92,0.06);
+}
+
+.review-checklist-item--todo .review-checklist-mark {
+  background: rgba(184,92,92,0.12);
+  color: var(--danger);
+}
+
 /* ---------- Animations ---------- */
 @keyframes fadeInUp {
   from { opacity: 0; transform: translateY(16px); }

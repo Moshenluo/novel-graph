@@ -61,6 +61,13 @@ interface ChapterReadiness {
   ready: boolean;
 }
 
+interface ReviewChecklistItem {
+  id: string;
+  title: string;
+  detail: string;
+  status: 'passed' | 'review' | 'todo';
+}
+
 const COLORS = {
   ink: '#0f172a',
   muted: '#64748b',
@@ -517,6 +524,19 @@ const convertNovelToScreenplayYaml = (text: string, characterOverrides?: Charact
     'adaptation_notes:',
     '  - "本稿为浏览器本地启发式转换结果，不调用外部接口。"',
     '  - "建议作者继续补充人物动机、场景调度和对白节奏。"',
+    'review_checklist:',
+    '  - id: "review_chapters"',
+    '    item: "确认每个小说章节都对应至少一个剧本场景"',
+    '    status: "todo"',
+    '    owner: "author"',
+    '  - id: "review_characters"',
+    '    item: "核对人物表是否遗漏关键角色或误收泛称"',
+    '    status: "todo"',
+    '    owner: "author"',
+    '  - id: "review_dialogue"',
+    '    item: "补写缺失对白、潜台词和可表演动作"',
+    '    status: "todo"',
+    '    owner: "author"',
   ];
   return lines.join('\n');
 };
@@ -714,8 +734,57 @@ function App() {
         detail: screenplayYaml.includes('adaptation_notes:') ? '已包含' : '待生成',
         passed: screenplayYaml.includes('adaptation_notes:'),
       },
+      {
+        label: '审稿清单',
+        detail: screenplayYaml.includes('review_checklist:') ? '已写入' : '待生成',
+        passed: screenplayYaml.includes('review_checklist:'),
+      },
     ];
   }, [chapters.length, generationStats.mode, screenplayYaml]);
+
+  const adaptationReviewChecklist = useMemo<ReviewChecklistItem[]>(() => {
+    const hasAiInference = screenplayYaml.includes('ai_inference:');
+    const hasSourceExcerpt = screenplayYaml.includes('source_excerpt:');
+    const lowConfidence = screenplayYaml.includes('confidence: "low"') || generationStats.fallbackScenes > 0;
+    const dialogueCount = draftScenes.reduce((sum, scene) => sum + scene.dialogueCount, 0);
+
+    return [
+      {
+        id: 'chapters',
+        title: '章节覆盖',
+        detail: canContinue ? `${chapters.length} 章已进入改编流程` : '至少需要 3 章小说文本',
+        status: canContinue ? 'passed' : 'todo',
+      },
+      {
+        id: 'characters',
+        title: '人物核对',
+        detail: effectiveCharacters.length > 0
+          ? `${effectiveCharacters.length} 个候选，来源：${characterPanelLabel}`
+          : '暂无人物候选，建议检查文本格式或手动补充',
+        status: effectiveCharacters.length > 0 ? 'review' : 'todo',
+      },
+      {
+        id: 'dialogue',
+        title: '对白打磨',
+        detail: dialogueCount > 0 ? `识别到 ${dialogueCount} 条对白线索` : '未识别到对白，剧本初稿需要作者补写台词',
+        status: dialogueCount > 0 ? 'review' : 'todo',
+      },
+      {
+        id: 'ai-evidence',
+        title: 'AI 推理依据',
+        detail: hasAiInference
+          ? hasSourceExcerpt ? 'AI 场景推理已附原文摘录' : 'AI 推理缺少原文摘录'
+          : aiAvailable ? '生成后检查 AI 推理依据' : '未启用 AI 时不要求',
+        status: hasAiInference && hasSourceExcerpt ? 'review' : aiAvailable ? 'todo' : 'passed',
+      },
+      {
+        id: 'risk',
+        title: '优先复核项',
+        detail: lowConfidence ? '存在低置信度或降级场景，建议优先检查' : screenplayYaml ? '暂无明显高风险降级项' : '生成 YAML 后显示风险提示',
+        status: lowConfidence ? 'todo' : screenplayYaml ? 'passed' : 'review',
+      },
+    ];
+  }, [aiAvailable, canContinue, chapters.length, characterPanelLabel, draftScenes, effectiveCharacters.length, generationStats.fallbackScenes, screenplayYaml]);
 
   const chapterReadiness = useMemo<ChapterReadiness[]>(() => chapters.map((chapter) => {
     const sentences = chapter.content.split(/[。！？!?]\s*/).map((item) => item.trim()).filter(Boolean);
@@ -1001,6 +1070,23 @@ function App() {
           `  - "AI 场景分析完成 ${aiSceneCount}/${chapters.length} 章，降级 ${fallbackSceneCount} 章。"`,
           '  - "建议作者继续补充人物动机、场景调度和对白节奏。"',
           '  - "AI 建议可能有误，请以作者判断为准。"',
+          'review_checklist:',
+          '  - id: "review_ai_evidence"',
+          '    item: "逐场核对 source_excerpt 是否支持 AI 推理结论"',
+          '    status: "todo"',
+          '    owner: "author"',
+          '  - id: "review_low_confidence"',
+          '    item: "优先复核 confidence 为 low 或 mixed 降级的场景"',
+          '    status: "todo"',
+          '    owner: "author"',
+          '  - id: "review_dialogue"',
+          '    item: "确认 suggested_dialogue 是否符合人物口吻，必要时重写"',
+          '    status: "todo"',
+          '    owner: "author"',
+          '  - id: "review_stage_action"',
+          '    item: "补充镜头调度、人物动作和场面节奏"',
+          '    status: "todo"',
+          '    owner: "author"',
         ].join('\n');
       } else {
         // 无 AI：回退到纯本地启发式
@@ -1301,6 +1387,20 @@ function App() {
               <span style={{ color: item.ok ? COLORS.success : COLORS.danger, fontWeight: 900 }}>{item.value}</span>
             </div>
           ))}
+          <h3 style={{ margin: '18px 0 10px', fontSize: 18, fontWeight: 950 }}>作者审稿清单</h3>
+          <div className="review-checklist">
+            {adaptationReviewChecklist.map((item) => (
+              <div key={item.id} className={`review-checklist-item review-checklist-item--${item.status}`}>
+                <div className="review-checklist-mark">
+                  {item.status === 'passed' ? '✓' : item.status === 'review' ? '!' : '·'}
+                </div>
+                <div>
+                  <div className="review-checklist-title">{item.title}</div>
+                  <div className="review-checklist-detail">{item.detail}</div>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     );
