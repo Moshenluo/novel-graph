@@ -548,12 +548,18 @@ body {
 .target-options {
   display: grid;
   gap: 8px;
+  max-height: 260px;
+  overflow: auto;
+  padding-right: 2px;
 }
 
 .style-options {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
+  max-height: 320px;
+  overflow: auto;
+  padding-right: 2px;
 }
 
 @media (max-width: 1180px) {
@@ -564,7 +570,7 @@ body {
 
 .target-option {
   width: 100%;
-  padding: 11px 12px;
+  padding: 9px 10px;
   border: 1px solid var(--line-light);
   border-radius: 8px;
   background: #fff;
@@ -581,7 +587,7 @@ body {
 .target-option span {
   display: block;
   color: var(--ink);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 950;
 }
 
@@ -589,7 +595,7 @@ body {
   display: block;
   margin-top: 3px;
   color: #837b70;
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1.5;
 }
 
