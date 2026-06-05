@@ -736,9 +736,62 @@ body {
 }
 
 /* ---------- YAML Preview ---------- */
+.yaml-export-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.yaml-export-head h3 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 950;
+}
+
+.yaml-export-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-left: 18px;
+}
+
+.yaml-action {
+  min-width: 64px;
+  padding: 9px 14px;
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 900;
+  cursor: pointer;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.yaml-action:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.yaml-action:disabled {
+  background: #e2e8f0;
+  color: #64748b;
+  cursor: not-allowed;
+}
+
+.yaml-action--copy:not(:disabled) {
+  background: var(--ink);
+}
+
+.yaml-action--download:not(:disabled) {
+  background: #10b981;
+}
+
 .yaml-preview {
-  min-height: 500px;
-  margin: 0; padding: 24px;
+  min-height: 560px;
+  margin: 0;
+  padding: 24px;
   border: 2px solid #1a1a2e;
   border-radius: var(--radius-md);
   background: #141420;
@@ -747,6 +800,18 @@ body {
   font-size: 13px; line-height: 1.7;
   overflow: auto; white-space: pre-wrap;
   tab-size: 2;
+}
+
+@media (max-width: 720px) {
+  .yaml-export-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .yaml-export-actions {
+    justify-content: flex-start;
+    margin-left: 0;
+  }
 }
 .yaml-preview .yaml-key { color: #8eaee0; }
 .yaml-preview .yaml-str { color: #a8d8a8; }
