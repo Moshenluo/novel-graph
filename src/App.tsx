@@ -37,6 +37,12 @@ interface GenerationStats {
   characterSource: CharacterSource;
 }
 
+interface YamlQualityCheck {
+  label: string;
+  detail: string;
+  passed: boolean;
+}
+
 const COLORS = {
   ink: '#0f172a',
   muted: '#64748b',
@@ -568,6 +574,46 @@ function App() {
     ];
   }, [canContinue, chapters.length, draftScenes, effectiveCharacters.length, generationStats, screenplayYaml]);
 
+  const yamlQualityChecks = useMemo<YamlQualityCheck[]>(() => {
+    const sceneCount = screenplayYaml.match(/\n\s{2}- id: "scene_/g)?.length ?? 0;
+    const characterCount = screenplayYaml.match(/\n\s{2}- id: "char_/g)?.length ?? 0;
+    const beatCount = screenplayYaml.match(/\n\s{6}- id: "beat_/g)?.length ?? 0;
+    const dialogueCount = screenplayYaml.match(/\n\s{6}- id: "line_/g)?.length ?? 0;
+
+    return [
+      {
+        label: 'Schema 版本',
+        detail: screenplayYaml.includes('schema_version:') ? '已声明' : '待生成',
+        passed: screenplayYaml.includes('schema_version:'),
+      },
+      {
+        label: '人物表',
+        detail: `${characterCount} 个角色`,
+        passed: characterCount > 0,
+      },
+      {
+        label: '场景列表',
+        detail: `${sceneCount}/${chapters.length || 0} 个场景`,
+        passed: sceneCount >= 3 && sceneCount === chapters.length,
+      },
+      {
+        label: '动作节拍',
+        detail: `${beatCount} 条节拍`,
+        passed: beatCount >= Math.max(chapters.length, 1),
+      },
+      {
+        label: '对白线索',
+        detail: dialogueCount > 0 ? `${dialogueCount} 条对白` : '暂无对白',
+        passed: dialogueCount > 0,
+      },
+      {
+        label: '打磨说明',
+        detail: screenplayYaml.includes('adaptation_notes:') ? '已包含' : '待生成',
+        passed: screenplayYaml.includes('adaptation_notes:'),
+      },
+    ];
+  }, [chapters.length, screenplayYaml]);
+
   // AI 人物提取：章节变化时自动触发
   const aiRunRef = useRef<string>('');
   useEffect(() => {
@@ -967,9 +1013,25 @@ function App() {
           <pre style={{ minHeight: 560, margin: 0, padding: 20, border: `2px solid ${COLORS.line}`, borderRadius: 14, background: '#0f172a', color: '#e2e8f0', overflow: 'auto', whiteSpace: 'pre-wrap', fontSize: 13, lineHeight: 1.65 }}>{screenplayYaml || '点击下方"生成 YAML"后显示结构化剧本初稿。'}</pre>
         </div>
         <div style={{ padding: 18, borderRadius: 14, border: `1px solid ${COLORS.line}`, background: '#fff', alignSelf: 'start' }}>
-          <h3 style={{ margin: '0 0 12px', fontSize: 18, fontWeight: 950 }}>导出清单</h3>
-          {['project 元数据', 'characters 人物候选', 'scenes 场景列表', 'beats 动作节拍', 'dialogue 对白'].map((item) => (
-            <div key={item} style={{ padding: '10px 0', borderBottom: `1px solid ${COLORS.line}`, fontSize: 14 }}>✅ {item}</div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+            <h3 style={{ margin: 0, fontSize: 18, fontWeight: 950 }}>YAML 质量检查</h3>
+            <a
+              href="https://github.com/Moshenluo/novel-graph/blob/codex/yaml-quality-checks/docs/screenplay-yaml-schema.md"
+              target="_blank"
+              rel="noreferrer"
+              style={{ color: COLORS.accentDark, fontSize: 12, fontWeight: 900, textDecoration: 'none' }}
+            >
+              Schema
+            </a>
+          </div>
+          {yamlQualityChecks.map((item) => (
+            <div key={item.label} style={{ padding: '10px 0', borderBottom: `1px solid ${COLORS.line}`, fontSize: 14 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                <span style={{ fontWeight: 850 }}>{item.label}</span>
+                <span style={{ color: item.passed ? COLORS.success : COLORS.muted, fontWeight: 950 }}>{item.passed ? '通过' : '待完善'}</span>
+              </div>
+              <div style={{ color: COLORS.muted, fontSize: 12, marginTop: 4 }}>{item.detail}</div>
+            </div>
           ))}
           <h3 style={{ margin: '18px 0 10px', fontSize: 18, fontWeight: 950 }}>转换诊断</h3>
           {conversionDiagnostics.map((item) => (
