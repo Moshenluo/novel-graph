@@ -1659,10 +1659,18 @@ function App() {
             </div>
           </div>
           <div className="yaml-editor-tools">
-            <div className="yaml-selection-status">
-              {yamlSelection.text.trim()
-                ? `已选中 ${yamlSelection.text.length} 个字符，可进行 AI 精修`
-                : '可直接编辑 YAML；选中片段后可让 AI 按要求精修'}
+            <div className={`yaml-selection-status${yamlSelection.text.trim() ? ' yaml-selection-status--active' : ''}`}>
+              <div className="yaml-selection-icon">{yamlSelection.text.trim() ? '选' : '文'}</div>
+              <div>
+                <div className="yaml-selection-title">
+                  {yamlSelection.text.trim() ? `已选中 ${yamlSelection.text.length} 个字符` : '可编辑 YAML'}
+                </div>
+                <div className="yaml-selection-detail">
+                  {yamlSelection.text.trim()
+                    ? compactText(yamlSelection.text.replace(/\s+/g, ' '), 86)
+                    : '直接修改剧本 YAML，或选中片段后让 AI 按要求精修。'}
+                </div>
+              </div>
             </div>
             <div className="yaml-refine-row">
               <input
