@@ -56,6 +56,17 @@ interface YamlQualityCheck {
   passed: boolean;
 }
 
+interface YamlRefineResult {
+  instruction: string;
+  before: string;
+  after: string;
+  start: number;
+  end: number;
+  sourceChapter?: number;
+  sourceTitle?: string;
+  sourceExcerpt?: string;
+}
+
 interface ChapterReadiness {
   index: number;
   title: string;
@@ -873,6 +884,21 @@ const aiRefineYamlFragment = async (yamlFragment: string, instruction: string): 
   return callDeepSeek(systemPrompt, `作者修改要求：${instruction}\n\n选中的 YAML 片段：\n${yamlFragment}`);
 };
 
+const findYamlSourceEvidence = (yamlFragment: string, chapters: NovelChapter[]) => {
+  const sourceMatch = yamlFragment.match(/source_chapter:\s*"?(\d+)"?/);
+  const lineMatch = yamlFragment.match(/line_(\d+)_\d+/);
+  const chapterIndex = Number(sourceMatch?.[1] ?? lineMatch?.[1] ?? 0);
+  const chapter = chapters.find((item) => item.index === chapterIndex);
+
+  if (!chapter) return {};
+
+  return {
+    sourceChapter: chapter.index,
+    sourceTitle: chapter.title,
+    sourceExcerpt: compactText(chapter.content.replace(/\s+/g, ' '), 220),
+  };
+};
+
 function App() {
   const [activeStep, setActiveStep] = useState(0);
   const [novelInput, setNovelInput] = useState('');
@@ -886,6 +912,7 @@ function App() {
   const [yamlRefining, setYamlRefining] = useState(false);
   const [yamlEditInstruction, setYamlEditInstruction] = useState('');
   const [yamlSelection, setYamlSelection] = useState({ start: 0, end: 0, text: '' });
+  const [yamlRefineResult, setYamlRefineResult] = useState<YamlRefineResult | null>(null);
   const [aiCharacters, setAiCharacters] = useState<CharacterInput[] | null>(null);
   const [adaptationTargetId, setAdaptationTargetId] = useState<AdaptationTargetId>(DEFAULT_ADAPTATION_TARGET.id);
   const [adaptationStyleId, setAdaptationStyleId] = useState<AdaptationStyleId>(DEFAULT_ADAPTATION_STYLE.id);
@@ -1263,6 +1290,7 @@ function App() {
       const text = await readDocumentText(file);
       setNovelInput(text.trim());
       setScreenplayYaml('');
+      setYamlRefineResult(null);
       setImportedFileName(file.name);
       setAiCharacters(null);
       setGenerationStats(createEmptyGenerationStats());
@@ -1297,6 +1325,7 @@ function App() {
 
   const generateYaml = async () => {
     setError('');
+    setYamlRefineResult(null);
     setStatus(aiAvailable ? 'AI 正在生成剧本...' : '正在生成剧本...');
 
     try {
@@ -1548,6 +1577,7 @@ function App() {
 
       setNovelInput(formatReviewedChapters(reviewedChapters));
       setScreenplayYaml('');
+      setYamlRefineResult(null);
       setAiCharacters(null);
       setGenerationStats(createEmptyGenerationStats());
       aiRunRef.current = '';
@@ -1599,14 +1629,24 @@ function App() {
     setYamlRefining(true);
     try {
       const refined = await aiRefineYamlFragment(selectedText, yamlEditInstruction.trim());
-      const nextYaml = `${screenplayYaml.slice(0, start)}${refined.trim()}${screenplayYaml.slice(end)}`;
+      const refinedText = refined.trim();
+      const nextYaml = `${screenplayYaml.slice(0, start)}${refinedText}${screenplayYaml.slice(end)}`;
+      const evidence = findYamlSourceEvidence(selectedText, chapters);
       setScreenplayYaml(nextYaml);
-      setYamlSelection({ start, end: start + refined.trim().length, text: refined.trim() });
+      setYamlSelection({ start, end: start + refinedText.length, text: refinedText });
+      setYamlRefineResult({
+        instruction: yamlEditInstruction.trim(),
+        before: selectedText,
+        after: refinedText,
+        start,
+        end: start + refinedText.length,
+        ...evidence,
+      });
       setYamlEditInstruction('');
       setStatus('已用 AI 精修选中的 YAML 片段，请继续核对 Schema 与原文依据。');
       requestAnimationFrame(() => {
         yamlTextareaRef.current?.focus();
-        yamlTextareaRef.current?.setSelectionRange(start, start + refined.trim().length);
+        yamlTextareaRef.current?.setSelectionRange(start, start + refinedText.length);
       });
     } catch (refineError) {
       setError(refineError instanceof Error ? refineError.message : 'AI 精修失败，请稍后重试。');
@@ -1675,7 +1715,7 @@ function App() {
             </div>
             <textarea
               value={novelInput}
-              onChange={(event) => { setNovelInput(event.target.value); setScreenplayYaml(''); setError(''); setImportedFileName(''); setAiCharacters(null); setGenerationStats(createEmptyGenerationStats()); aiRunRef.current = ''; }}
+              onChange={(event) => { setNovelInput(event.target.value); setScreenplayYaml(''); setYamlRefineResult(null); setError(''); setImportedFileName(''); setAiCharacters(null); setGenerationStats(createEmptyGenerationStats()); aiRunRef.current = ''; }}
               placeholder="在这里粘贴小说文本。请至少包含 3 个章节，例如：第一章、第二章、第三章。"
               className={`novel-textarea${error ? ' novel-textarea--error' : ''}`}
             />
@@ -1885,12 +1925,53 @@ function App() {
               </button>
             </div>
           </div>
+          {yamlRefineResult && (
+            <div className="yaml-refine-result">
+              <div className="yaml-refine-result-head">
+                <div>
+                  <h4>AI 精修结果</h4>
+                  <p>修改要求：{yamlRefineResult.instruction}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    yamlTextareaRef.current?.focus();
+                    yamlTextareaRef.current?.setSelectionRange(yamlRefineResult.start, yamlRefineResult.end);
+                  }}
+                >
+                  定位到修改处
+                </button>
+              </div>
+              <div className="yaml-refine-source">
+                <strong>原文定位</strong>
+                {yamlRefineResult.sourceChapter ? (
+                  <span>
+                    第 {yamlRefineResult.sourceChapter} 章：{yamlRefineResult.sourceTitle}
+                    <em>{yamlRefineResult.sourceExcerpt}</em>
+                  </span>
+                ) : (
+                  <span>当前选区未包含 `source_chapter` 或对白行号，建议选中场景块、对白块或保留来源字段后再精修。</span>
+                )}
+              </div>
+              <div className="yaml-refine-diff">
+                <div>
+                  <b>修改前</b>
+                  <pre>{compactText(yamlRefineResult.before, 420)}</pre>
+                </div>
+                <div>
+                  <b>修改后</b>
+                  <pre>{compactText(yamlRefineResult.after, 420)}</pre>
+                </div>
+              </div>
+            </div>
+          )}
           <textarea
             ref={yamlTextareaRef}
             className="yaml-preview yaml-editor-textarea"
             value={screenplayYaml}
             onChange={(event) => {
               setScreenplayYaml(event.target.value);
+              setYamlRefineResult(null);
               setStatus('YAML 已手动编辑，请按 Schema 继续核对。');
             }}
             onSelect={captureYamlSelection}
@@ -1922,26 +2003,34 @@ function App() {
               {!item.passed && <div className="yaml-check-action">{item.action}</div>}
             </div>
           ))}
-          <h3 style={{ margin: '18px 0 10px', fontSize: 18, fontWeight: 950 }}>转换诊断</h3>
-          {conversionDiagnostics.map((item) => (
-            <div key={item.label} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '9px 0', borderBottom: `1px solid ${COLORS.line}`, fontSize: 13 }}>
-              <span style={{ color: COLORS.muted }}>{item.label}</span>
-              <span style={{ color: item.ok ? COLORS.success : COLORS.danger, fontWeight: 900 }}>{item.value}</span>
+        </div>
+        <div className="yaml-review-below">
+          <div className="studio-panel studio-panel-pad">
+            <h3 style={{ margin: '0 0 12px', fontSize: 18, fontWeight: 950 }}>转换诊断</h3>
+            <div className="conversion-diagnostics-grid">
+              {conversionDiagnostics.map((item) => (
+                <div key={item.label} className={`conversion-diagnostic-card${item.ok ? ' conversion-diagnostic-card--ok' : ''}`}>
+                  <span>{item.label}</span>
+                  <strong>{item.value}</strong>
+                </div>
+              ))}
             </div>
-          ))}
-          <h3 style={{ margin: '18px 0 10px', fontSize: 18, fontWeight: 950 }}>作者审稿清单</h3>
-          <div className="review-checklist">
-            {adaptationReviewChecklist.map((item) => (
-              <div key={item.id} className={`review-checklist-item review-checklist-item--${item.status}`}>
-                <div className="review-checklist-mark">
-                  {item.status === 'passed' ? '✓' : item.status === 'review' ? '!' : '·'}
+          </div>
+          <div className="studio-panel studio-panel-pad">
+            <h3 style={{ margin: '0 0 12px', fontSize: 18, fontWeight: 950 }}>作者审稿清单</h3>
+            <div className="review-checklist">
+              {adaptationReviewChecklist.map((item) => (
+                <div key={item.id} className={`review-checklist-item review-checklist-item--${item.status}`}>
+                  <div className="review-checklist-mark">
+                    {item.status === 'passed' ? '✓' : item.status === 'review' ? '!' : '·'}
+                  </div>
+                  <div>
+                    <div className="review-checklist-title">{item.title}</div>
+                    <div className="review-checklist-detail">{item.detail}</div>
+                  </div>
                 </div>
-                <div>
-                  <div className="review-checklist-title">{item.title}</div>
-                  <div className="review-checklist-detail">{item.detail}</div>
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </div>
       </div>
@@ -1952,7 +2041,7 @@ function App() {
     <div style={{ minHeight: '100vh', color: 'var(--ink)' }}>
       <header className="app-header">
         <div className="header-inner">
-        <a className="header-brand" href="#" onClick={(e) => { e.preventDefault(); setActiveStep(0); setNovelInput(''); setScreenplayYaml(''); setStatus(''); setError(''); setAiCharacters(null); setGenerationStats(createEmptyGenerationStats()); aiRunRef.current = ''; }}>
+        <a className="header-brand" href="#" onClick={(e) => { e.preventDefault(); setActiveStep(0); setNovelInput(''); setScreenplayYaml(''); setYamlRefineResult(null); setStatus(''); setError(''); setAiCharacters(null); setGenerationStats(createEmptyGenerationStats()); aiRunRef.current = ''; }}>
           <div className="header-logo">🎬</div>
           <div>
             <div className="header-title">小说转剧本 YAML</div>
@@ -2008,6 +2097,7 @@ function App() {
                     onClick={() => {
                       setAdaptationTargetId(target.id);
                       setScreenplayYaml('');
+                      setYamlRefineResult(null);
                       setGenerationStats(createEmptyGenerationStats());
                     }}
                   >
@@ -2035,6 +2125,7 @@ function App() {
                     onClick={() => {
                       setAdaptationStyleId(style.id);
                       setScreenplayYaml('');
+                      setYamlRefineResult(null);
                       setGenerationStats(createEmptyGenerationStats());
                     }}
                   >
@@ -2099,7 +2190,7 @@ function App() {
               </div>
               <div className="studio-toolbar">
                 {activeStep > 0 && <button className="btn btn-ghost btn-sm" onClick={() => setActiveStep((step) => Math.max(0, step - 1))}>上一步</button>}
-                <button className="btn btn-ghost btn-sm" onClick={() => { setNovelInput(''); setScreenplayYaml(''); setStatus(''); setError(''); setImportedFileName(''); setAiCharacters(null); setGenerationStats(createEmptyGenerationStats()); aiRunRef.current = ''; setActiveStep(0); }}>重置</button>
+                <button className="btn btn-ghost btn-sm" onClick={() => { setNovelInput(''); setScreenplayYaml(''); setYamlRefineResult(null); setStatus(''); setError(''); setImportedFileName(''); setAiCharacters(null); setGenerationStats(createEmptyGenerationStats()); aiRunRef.current = ''; setActiveStep(0); }}>重置</button>
                 <button className="btn btn-primary" onClick={activeStep === 3 ? generateYaml : goNext}>{activeStep === 3 ? (aiAvailable ? 'AI 增强重新生成' : '重新生成 YAML') : activeStep === 2 ? (aiAvailable ? 'AI 生成 YAML' : '生成 YAML') : '下一步'}</button>
               </div>
             </div>
