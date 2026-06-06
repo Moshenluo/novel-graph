@@ -742,6 +742,19 @@ const readDocumentText = async (file: File) => {
   throw new Error('暂支持 .txt、.md、.docx 文档导入。');
 };
 
+const aiRefineYamlFragment = async (yamlFragment: string, instruction: string): Promise<string> => {
+  const systemPrompt = `你是剧本 YAML 编辑助手。你只负责根据作者要求精修用户选中的 YAML 片段。
+
+规则：
+1. 只输出修改后的 YAML 片段，不要输出 markdown 代码块、解释或前后缀。
+2. 保持 YAML 缩进和字段名风格，不要擅自改动未被选中的上下文。
+3. 若涉及 AI 推理、补写、改写，请保留或新增 needs_author_review: true。
+4. 若改写场景，优先维护 scenes 下的 summary、ai_inference、staging、beats、dialogue、revision_notes 等结构。
+5. 若作者要求不明确，只做保守润色，不改变原文事实。`;
+
+  return callDeepSeek(systemPrompt, `作者修改要求：${instruction}\n\n选中的 YAML 片段：\n${yamlFragment}`);
+};
+
 function App() {
   const [activeStep, setActiveStep] = useState(0);
   const [novelInput, setNovelInput] = useState('');
@@ -751,11 +764,15 @@ function App() {
   const [importedFileName, setImportedFileName] = useState('');
   const [isDragging, setIsDragging] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
+  const [yamlRefining, setYamlRefining] = useState(false);
+  const [yamlEditInstruction, setYamlEditInstruction] = useState('');
+  const [yamlSelection, setYamlSelection] = useState({ start: 0, end: 0, text: '' });
   const [aiCharacters, setAiCharacters] = useState<CharacterInput[] | null>(null);
   const [adaptationTargetId, setAdaptationTargetId] = useState<AdaptationTargetId>(DEFAULT_ADAPTATION_TARGET.id);
   const [adaptationStyleId, setAdaptationStyleId] = useState<AdaptationStyleId>(DEFAULT_ADAPTATION_STYLE.id);
   const [generationStats, setGenerationStats] = useState<GenerationStats>(() => createEmptyGenerationStats());
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const yamlTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   const aiAvailable = getAIStatus() === 'enabled';
   const adaptationTarget = useMemo(() => getAdaptationTarget(adaptationTargetId), [adaptationTargetId]);
@@ -1368,6 +1385,56 @@ function App() {
     setStatus('已复制 YAML。');
   };
 
+  const captureYamlSelection = useCallback(() => {
+    const textarea = yamlTextareaRef.current;
+    if (!textarea) return;
+    const start = textarea.selectionStart ?? 0;
+    const end = textarea.selectionEnd ?? 0;
+    setYamlSelection({ start, end, text: screenplayYaml.slice(start, end) });
+  }, [screenplayYaml]);
+
+  const handleRefineYamlSelection = async () => {
+    const textarea = yamlTextareaRef.current;
+    if (!textarea || !screenplayYaml) return;
+    const start = textarea.selectionStart ?? yamlSelection.start;
+    const end = textarea.selectionEnd ?? yamlSelection.end;
+    const selectedText = screenplayYaml.slice(start, end);
+
+    if (!selectedText.trim()) {
+      setError('请先在 YAML 中选中需要 AI 精修的片段。');
+      return;
+    }
+    if (!yamlEditInstruction.trim()) {
+      setError('请填写本次想让 AI 怎么修改选中的 YAML 片段。');
+      return;
+    }
+    if (!aiAvailable) {
+      setError('AI 精修需要配置 VITE_DEEPSEEK_API_KEY。你仍可直接手动编辑 YAML。');
+      return;
+    }
+
+    setError('');
+    setStatus('AI 正在精修选中的 YAML 片段...');
+    setYamlRefining(true);
+    try {
+      const refined = await aiRefineYamlFragment(selectedText, yamlEditInstruction.trim());
+      const nextYaml = `${screenplayYaml.slice(0, start)}${refined.trim()}${screenplayYaml.slice(end)}`;
+      setScreenplayYaml(nextYaml);
+      setYamlSelection({ start, end: start + refined.trim().length, text: refined.trim() });
+      setYamlEditInstruction('');
+      setStatus('已用 AI 精修选中的 YAML 片段，请继续核对 Schema 与原文依据。');
+      requestAnimationFrame(() => {
+        yamlTextareaRef.current?.focus();
+        yamlTextareaRef.current?.setSelectionRange(start, start + refined.trim().length);
+      });
+    } catch (refineError) {
+      setError(refineError instanceof Error ? refineError.message : 'AI 精修失败，请稍后重试。');
+      setStatus('');
+    } finally {
+      setYamlRefining(false);
+    }
+  };
+
   const handleDownload = () => {
     if (!screenplayYaml) return;
     const blob = new Blob([screenplayYaml], { type: 'text/yaml;charset=utf-8' });
@@ -1591,7 +1658,37 @@ function App() {
               <button className="yaml-action yaml-action--download" onClick={handleDownload} disabled={!screenplayYaml}>下载</button>
             </div>
           </div>
-          <pre className="yaml-preview">{screenplayYaml || '点击下方"生成 YAML"后显示结构化剧本初稿。'}</pre>
+          <div className="yaml-editor-tools">
+            <div className="yaml-selection-status">
+              {yamlSelection.text.trim()
+                ? `已选中 ${yamlSelection.text.length} 个字符，可进行 AI 精修`
+                : '可直接编辑 YAML；选中片段后可让 AI 按要求精修'}
+            </div>
+            <div className="yaml-refine-row">
+              <input
+                value={yamlEditInstruction}
+                onChange={(event) => setYamlEditInstruction(event.target.value)}
+                placeholder="例如：把这一场改得更悬疑，并补强 staging.subtext"
+                disabled={!screenplayYaml || yamlRefining}
+              />
+              <button onClick={handleRefineYamlSelection} disabled={!screenplayYaml || yamlRefining}>
+                {yamlRefining ? '精修中...' : 'AI 精修选区'}
+              </button>
+            </div>
+          </div>
+          <textarea
+            ref={yamlTextareaRef}
+            className="yaml-preview yaml-editor-textarea"
+            value={screenplayYaml}
+            onChange={(event) => {
+              setScreenplayYaml(event.target.value);
+              setStatus('YAML 已手动编辑，请按 Schema 继续核对。');
+            }}
+            onSelect={captureYamlSelection}
+            onKeyUp={captureYamlSelection}
+            onMouseUp={captureYamlSelection}
+            placeholder={'点击“生成 YAML”后显示结构化剧本初稿。生成后可直接编辑，或选中片段进行 AI 精修。'}
+          />
         </div>
         <div className="studio-panel studio-panel-pad" style={{ alignSelf: 'start' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
