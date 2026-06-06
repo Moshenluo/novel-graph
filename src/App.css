@@ -788,6 +788,61 @@ body {
   background: #10b981;
 }
 
+.yaml-editor-tools {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding: 12px;
+  border: 1px solid rgba(222,216,199,0.9);
+  border-radius: 10px;
+  background: rgba(255,253,248,0.78);
+}
+
+.yaml-selection-status {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.yaml-refine-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto;
+  gap: 10px;
+}
+
+.yaml-refine-row input {
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 13px;
+  outline: none;
+}
+
+.yaml-refine-row input:focus {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 3px rgba(184,138,68,0.12);
+}
+
+.yaml-refine-row button {
+  padding: 10px 13px;
+  border: none;
+  border-radius: 8px;
+  background: var(--rail);
+  color: #fffaf0;
+  font-size: 13px;
+  font-weight: 950;
+  cursor: pointer;
+}
+
+.yaml-refine-row button:disabled,
+.yaml-refine-row input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .yaml-preview {
   min-height: 560px;
   margin: 0;
@@ -802,6 +857,18 @@ body {
   tab-size: 2;
 }
 
+.yaml-editor-textarea {
+  display: block;
+  width: 100%;
+  resize: vertical;
+  outline: none;
+}
+
+.yaml-editor-textarea:focus {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 3px rgba(184,138,68,0.14);
+}
+
 @media (max-width: 720px) {
   .yaml-export-head {
     align-items: flex-start;
@@ -811,6 +878,10 @@ body {
   .yaml-export-actions {
     justify-content: flex-start;
     margin-left: 0;
+  }
+
+  .yaml-refine-row {
+    grid-template-columns: 1fr;
   }
 }
 .yaml-preview .yaml-key { color: #8eaee0; }
