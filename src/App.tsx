@@ -11,6 +11,7 @@ interface NovelChapter {
 interface DialogueLine {
   speaker: string;
   text: string;
+  source?: 'source_detected' | 'ai_suggested';
 }
 
 type CharacterRole = 'protagonist' | 'major_supporting' | 'supporting' | 'minor';
@@ -571,6 +572,17 @@ const formatReviewedChapters = (reviewedChapters: AIChapterBoundary[]) => review
   })
   .join('\n\n');
 
+const mergeDialogueDrafts = (sourceDialogues: DialogueLine[], suggestedDialogue: string[] = []): DialogueLine[] => {
+  const dialogues = sourceDialogues.slice(0, 8);
+  if (dialogues.length > 0) return dialogues;
+
+  return suggestedDialogue
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 3)
+    .map((text) => ({ speaker: '待定', text, source: 'ai_suggested' }));
+};
+
 const compactText = (value: string, max = 100) => {
   const text = value.replace(/\s+/g, ' ').trim();
   return text.length > max ? `${text.slice(0, max)}...` : text;
@@ -646,14 +658,47 @@ const toScreenplayCharacters = (characters: CharacterInput[]): ScreenplayCharact
 
 const extractQuotedDialogue = (content: string): DialogueLine[] => {
   const lines: DialogueLine[] = [];
-  const pattern = /([\u4e00-\u9fa5A-Za-z]{2,8})\s*(?:说|问|答道|低声说|回答|喊道|说道|笑道)[：:]\s*[""]([^""]+)[""]?/g;
-  for (const match of content.matchAll(pattern)) {
-    const speaker = normalizeCharacterName(match[1]);
+  const seen = new Set<string>();
+  const addLine = (rawSpeaker: string, rawText: string) => {
+    const speaker = normalizeCharacterName(rawSpeaker);
+    const text = rawText.replace(/^["“'‘]+|["”'’。！？!?]+$/g, '').trim();
+    if (!text || text.length < 2) return;
+    if (/(说|说道|问|问道|答|答道|回答|喊|喊道|叫|叫道|笑道|低声|高声|大声|冷冷地|喃喃|叹道|道|曰)$/.test(speaker)) return;
     if (isPlausibleCharacterName(speaker, true)) {
-      lines.push({ speaker, text: match[2].trim() });
+      const key = `${speaker}:${text}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        lines.push({ speaker, text, source: 'source_detected' });
+      }
     }
+  };
+
+  const speechVerb = '(?:说|说道|问|问道|答|答道|回答|喊|喊道|叫|叫道|笑道|低声说|高声说|大声说|冷冷地说|喃喃道|叹道|道|曰)';
+  const speakerName = '([\\u4e00-\\u9fa5A-Za-z][\\u4e00-\\u9fa5A-Za-z·]{0,7})';
+  const speakerBeforeVerb = '([\\u4e00-\\u9fa5A-Za-z][\\u4e00-\\u9fa5A-Za-z·]{0,7}?)';
+  const quotedText = `[“"'‘]([^”"'’]{2,160})[”"'’]?`;
+
+  // 说话人 + 说话动词 + 冒号/引号，例如：孔乙己说道：“窃书不能算偷。”
+  const verbQuotePattern = new RegExp(`${speakerBeforeVerb}\\s*${speechVerb}\\s*(?:[：:]\\s*)?${quotedText}`, 'g');
+  for (const match of content.matchAll(verbQuotePattern)) {
+    addLine(match[1], match[2]);
   }
-  return lines;
+
+  // 说话人 + 冒号 + 对白，例如：孔乙己：窃书不能算偷。
+  const colonPattern = new RegExp(`(?:^|\\n|[。！？!?])\\s*${speakerName}\\s*[：:]\\s*([^\\n。！？!?]{2,160})`, 'g');
+  for (const match of content.matchAll(colonPattern)) {
+    const speaker = normalizeCharacterName(match[1]);
+    if (speaker.length > 8) continue;
+    addLine(speaker, match[2]);
+  }
+
+  // 引号对白 + 说话人，例如：“窃书不能算偷。”孔乙己涨红了脸说道。
+  const quoteThenSpeakerPattern = new RegExp(`${quotedText}\\s*${speakerBeforeVerb}\\s*(?:低声|高声|大声|冷冷地|喃喃)?\\s*${speechVerb}`, 'g');
+  for (const match of content.matchAll(quoteThenSpeakerPattern)) {
+    addLine(match[2], match[1]);
+  }
+
+  return lines.slice(0, 20);
 };
 
 const extractCharacters = (chapters: NovelChapter[]) => {
@@ -1284,7 +1329,8 @@ function App() {
         const characters = toScreenplayCharacters(charactersForYaml);
         const scenes = chapters.map((chapter, index) => {
           const enrichment = enrichedScenes[index]!;
-          const dialogues = extractQuotedDialogue(chapter.content).slice(0, 8);
+          const sourceDialogues = extractQuotedDialogue(chapter.content).slice(0, 8);
+          const dialogues = mergeDialogueDrafts(sourceDialogues, enrichment.suggested_dialogue);
           return {
             id: `scene_${String(index + 1).padStart(2, '0')}`,
             sourceChapter: chapter.index,
@@ -1376,7 +1422,8 @@ function App() {
                 `      - id: "line_${scene.sourceChapter}_${dialogueIndex + 1}"`,
                 `        speaker: ${yamlScalar(dialogue.speaker)}`,
                 `        text: ${yamlScalar(dialogue.text)}`,
-                '        subtext: "待作者打磨"',
+                `        source: "${dialogue.source ?? 'source_detected'}"`,
+                `        subtext: ${yamlScalar(dialogue.source === 'ai_suggested' ? 'AI 建议对白，需作者确认说话人、语气和原文依据' : '待作者打磨')}`,
               ].join('\n'))
               : ['      []]']),
             '    revision_notes:',
