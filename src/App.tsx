@@ -51,6 +51,8 @@ interface GenerationStats {
 interface YamlQualityCheck {
   label: string;
   detail: string;
+  why: string;
+  action: string;
   passed: boolean;
 }
 
@@ -62,6 +64,7 @@ interface ChapterReadiness {
   dialogueCount: number;
   warnings: string[];
   ready: boolean;
+  risk: 'ok' | 'review' | 'blocker';
 }
 
 interface ReviewChecklistItem {
@@ -1022,61 +1025,85 @@ function App() {
       {
         label: 'Schema 版本',
         detail: screenplayYaml.includes('schema_version:') ? '已声明' : '待生成',
+        why: '让评审和后续工具知道当前 YAML 使用哪一版结构。',
+        action: '生成后应保留 `schema_version: "1.0"`。',
         passed: screenplayYaml.includes('schema_version:'),
       },
       {
         label: '人物表',
         detail: `${characterCount} 个角色`,
+        why: '人物表是后续场景、对白和人物弧光打磨的索引。',
+        action: '若角色过少，回到人物图谱或 YAML 中补充主要人物。',
         passed: characterCount > 0,
       },
       {
         label: '场景列表',
         detail: `${sceneCount}/${chapters.length || 0} 个场景`,
+        why: '题目要求把 3 章以上小说转换为结构化剧本，场景是剧本主体。',
+        action: '确认每章至少对应一个 `scene`，缺失时重新生成或手动补场景。',
         passed: sceneCount >= 3 && sceneCount === chapters.length,
       },
       {
         label: '改编目标',
         detail: screenplayYaml.includes('target_format:') ? adaptationTarget.name : '待写入',
+        why: '不同目标会影响场景密度、节奏和对白处理方式。',
+        action: '确认 `target_format` 与左侧选择一致。',
         passed: screenplayYaml.includes('target_format:'),
       },
       {
         label: '改编风格',
         detail: screenplayYaml.includes('adaptation_style:') ? adaptationStyle.name : '待写入',
+        why: '风格决定 AI 改写尺度，避免默认强行套类型。',
+        action: '选择“保持原文”或具体风格后重新生成。',
         passed: screenplayYaml.includes('adaptation_style:'),
       },
       {
         label: '动作节拍',
         detail: `${beatCount} 条节拍`,
+        why: '节拍把小说叙述拆成可表演、可拍摄的动作推进。',
+        action: '每个场景至少保留 1 条 `beats[].action`。',
         passed: beatCount >= Math.max(chapters.length, 1),
       },
       {
         label: '对白线索',
         detail: dialogueCount > 0 ? `${dialogueCount} 条对白` : '暂无对白',
+        why: '对白是剧本区别于小说摘要的关键可编辑内容。',
+        action: '可用冒号/引号识别原文对白，或让 AI 建议后手动确认说话人。',
         passed: dialogueCount > 0,
       },
       {
         label: '调度层',
         detail: screenplayYaml.includes('staging:') ? '已包含镜头/动作/潜台词' : '待生成',
+        why: '调度层让初稿不止是剧情摘要，还能继续向可拍摄剧本推进。',
+        action: '检查 `staging.camera/action/subtext` 是否具体。',
         passed: screenplayYaml.includes('staging:'),
       },
       {
         label: 'AI 推理',
         detail: screenplayYaml.includes('ai_inference:') ? '已标记需审核' : expectsAiInference ? '待写入' : '本地模式不要求',
+        why: 'AI 补充的冲突、动机和对白建议需要和原文事实区分。',
+        action: 'AI 模式下应保留 `needs_author_review: true`。',
         passed: !expectsAiInference || screenplayYaml.includes('ai_inference:'),
       },
       {
         label: '原文依据',
         detail: screenplayYaml.includes('source_excerpt:') ? '已写入摘录' : expectsAiInference ? '待写入' : '本地模式不要求',
+        why: '依据摘录帮助作者快速核对 AI 是否理解错原文。',
+        action: '低置信度场景优先检查 `source_excerpt`。',
         passed: !expectsAiInference || screenplayYaml.includes('source_excerpt:'),
       },
       {
         label: '打磨说明',
         detail: screenplayYaml.includes('adaptation_notes:') ? '已包含' : '待生成',
+        why: '说明自动初稿的边界，提醒作者继续二次创作。',
+        action: '下载前保留 `adaptation_notes`，可补充个人修改计划。',
         passed: screenplayYaml.includes('adaptation_notes:'),
       },
       {
         label: '审稿清单',
         detail: screenplayYaml.includes('review_checklist:') ? '已写入' : '待生成',
+        why: '把后续核查任务写进 YAML，便于继续打磨和演示。',
+        action: '至少保留章节、人物、对白和 AI 依据相关审稿项。',
         passed: screenplayYaml.includes('review_checklist:'),
       },
     ];
@@ -1140,6 +1167,7 @@ function App() {
       sentences.length < 3 ? '可提炼节拍偏少' : '',
       dialogueCount === 0 ? '未识别到对白，可后续手动补充' : '',
     ].filter(Boolean);
+    const hasBlocker = chapter.content.length < 80 || sentences.length < 2;
 
     return {
       index: chapter.index,
@@ -1149,6 +1177,7 @@ function App() {
       dialogueCount,
       warnings,
       ready: warnings.length === 0,
+      risk: warnings.length === 0 ? 'ok' : hasBlocker ? 'blocker' : 'review',
     };
   }), [chapters]);
 
@@ -1699,31 +1728,29 @@ function App() {
               </div>
             ))}
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 14 }}>
+          <div style={{ display: 'grid', gap: 8 }}>
             {chapters.map((chapter) => {
               const readiness = chapterReadiness.find((item) => item.index === chapter.index);
+              const riskColor = readiness?.risk === 'ok' ? COLORS.success : readiness?.risk === 'blocker' ? COLORS.danger : COLORS.accentDark;
+              const warningText = readiness && readiness.warnings.length > 0 ? readiness.warnings.join('；') : '结构完整，可进入草案';
               return (
-                <div key={chapter.index} className="card" style={{ padding: 18, border: `1px solid ${COLORS.line}`, borderRadius: 14, background: '#fff' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
-                    <div style={{ color: COLORS.accent, fontSize: 13, fontWeight: 950 }}>第 {chapter.index} 章</div>
-                    <div style={{ color: readiness?.ready ? COLORS.success : COLORS.danger, fontSize: 12, fontWeight: 950 }}>
+                <div key={chapter.index} className="chapter-review-row">
+                  <div className="chapter-review-index">第 {chapter.index} 章</div>
+                  <div className="chapter-review-main">
+                    <div className="chapter-review-title">{chapter.title}</div>
+                    <div className="chapter-review-preview">{compactText(chapter.content, 96)}</div>
+                  </div>
+                  <div className="chapter-review-metrics">
+                    <span>{readiness?.wordCount ?? chapter.content.length} 字</span>
+                    <span>{readiness?.sentenceCount ?? 0} 句</span>
+                    <span>{readiness?.dialogueCount ?? 0} 对白</span>
+                  </div>
+                  <div className="chapter-review-status">
+                    <span style={{ color: riskColor, fontWeight: 950 }}>
                       {readiness?.ready ? '就绪' : '需关注'}
-                    </div>
+                    </span>
+                    <small>{warningText}</small>
                   </div>
-                  <div style={{ marginTop: 8, fontSize: 18, fontWeight: 950 }}>{chapter.title}</div>
-                  <p style={{ color: COLORS.muted, lineHeight: 1.6, minHeight: 46 }}>{compactText(chapter.content, 82)}</p>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, fontSize: 12, color: COLORS.muted }}>
-                    <span>字数 {readiness?.wordCount ?? chapter.content.length}</span>
-                    <span>句子 {readiness?.sentenceCount ?? 0}</span>
-                    <span>对白 {readiness?.dialogueCount ?? 0}</span>
-                  </div>
-                  {readiness && readiness.warnings.length > 0 && (
-                    <div style={{ display: 'grid', gap: 6, marginTop: 12 }}>
-                      {readiness.warnings.map((warning) => (
-                        <div key={warning} style={{ padding: '7px 9px', borderRadius: 8, background: '#fff7ed', color: '#9a3412', fontSize: 12, lineHeight: 1.5 }}>{warning}</div>
-                      ))}
-                    </div>
-                  )}
               </div>
               );
             })}
@@ -1885,12 +1912,14 @@ function App() {
             </a>
           </div>
           {yamlQualityChecks.map((item) => (
-            <div key={item.label} style={{ padding: '10px 0', borderBottom: `1px solid ${COLORS.line}`, fontSize: 14 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-                <span style={{ fontWeight: 850 }}>{item.label}</span>
-                <span style={{ color: item.passed ? COLORS.success : COLORS.muted, fontWeight: 950 }}>{item.passed ? '通过' : '待完善'}</span>
+            <div key={item.label} className={`yaml-check-item${item.passed ? ' yaml-check-item--passed' : ''}`}>
+              <div className="yaml-check-head">
+                <span>{item.label}</span>
+                <b>{item.passed ? '通过' : '待完善'}</b>
               </div>
-              <div style={{ color: COLORS.muted, fontSize: 12, marginTop: 4 }}>{item.detail}</div>
+              <div className="yaml-check-detail">{item.detail}</div>
+              <div className="yaml-check-why">{item.why}</div>
+              {!item.passed && <div className="yaml-check-action">{item.action}</div>}
             </div>
           ))}
           <h3 style={{ margin: '18px 0 10px', fontSize: 18, fontWeight: 950 }}>转换诊断</h3>
