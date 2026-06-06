@@ -1889,7 +1889,7 @@ function App() {
               <div>
                 <div className="studio-kicker">Screenplay Conversion Workspace</div>
                 <h2 className="page-title">
-                  <span style={{ width: 56, height: 56, borderRadius: 14, background: 'var(--gold-light)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 34, marginRight: 14 }}>{activeStep === 0 ? '📥' : activeStep === 1 ? '📚' : activeStep === 2 ? '🎭' : '🧾'}</span>
+                  <span className="page-title-icon">{activeStep === 0 ? '📥' : activeStep === 1 ? '📚' : activeStep === 2 ? '🎭' : '🧾'}</span>
                   {steps[activeStep].title}
                 </h2>
                 <p className="page-desc">{steps[activeStep].desc}，最后输出可编辑的 YAML 剧本初稿。</p>
