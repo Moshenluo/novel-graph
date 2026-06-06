@@ -125,6 +125,7 @@ scenes:
       - id: "line_1_1"
         speaker: "沈砚"
         text: "这封信提到了你父亲失踪前最后去过的地方。"
+        source: "source_detected"
         subtext: "待作者打磨"
     revision_notes:
       - "检查场景冲突是否足够清晰"
@@ -164,9 +165,10 @@ scenes:
 | `id` | string | 对白标识。 |
 | `speaker` | string | 说话人。 |
 | `text` | string | 对白正文。 |
+| `source` | string | 对白来源，`source_detected` 表示由原文冒号/引号/说话动词识别，`ai_suggested` 表示 AI 建议对白。 |
 | `subtext` | string | 潜台词或表演提示，初稿可留待补充。 |
 
-设计原因：对白是小说改剧本最需要反复调整的部分。把对白独立成结构化数组，可以支持后续筛选某个角色全部台词、统计台词长度、导出对白表。
+设计原因：对白是小说改剧本最需要反复调整的部分。把对白独立成结构化数组，可以支持后续筛选某个角色全部台词、统计台词长度、导出对白表。`source` 明确区分原文识别对白和 AI 建议对白，避免把 AI 补写内容误当作原文事实，也方便作者后续手动补说话人、语气和潜台词。
 
 ## adaptation_notes
 
