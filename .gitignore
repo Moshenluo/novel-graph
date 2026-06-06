@@ -11,6 +11,8 @@ node_modules
 dist
 dist-ssr
 outputs/
+public/novels/
+.workbuddy/
 *.local
 .env
 .env.*

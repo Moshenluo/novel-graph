@@ -1829,7 +1829,7 @@ function App() {
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
             <h3 style={{ margin: 0, fontSize: 18, fontWeight: 950 }}>YAML 质量检查</h3>
             <a
-              href="https://github.com/Moshenluo/novel-graph/blob/codex/yaml-quality-checks/docs/screenplay-yaml-schema.md"
+              href="https://github.com/Moshenluo/novel-graph/blob/main/docs/screenplay-yaml-schema.md"
               target="_blank"
               rel="noreferrer"
               style={{ color: COLORS.accentDark, fontSize: 12, fontWeight: 900, textDecoration: 'none' }}
