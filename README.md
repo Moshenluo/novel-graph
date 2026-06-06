@@ -82,6 +82,12 @@ npm run build
 npm run preview
 ```
 
+最终提交前建议执行：
+
+```bash
+npm run check
+```
+
 ## 使用方式
 
 1. 打开项目后默认进入"文本导入"步骤。
@@ -107,6 +113,7 @@ npm run preview
 - [docs/design-iteration-plan.md](docs/design-iteration-plan.md)
 - [docs/scoring-alignment.md](docs/scoring-alignment.md)
 - [docs/pr-summaries/](docs/pr-summaries/)
+- [docs/final-requirements-audit.md](docs/final-requirements-audit.md)
 
 Schema 设计原则：
 
