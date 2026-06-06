@@ -1,4 +1,5 @@
-import { useMemo, useRef, useState, DragEvent, useCallback } from 'react';
+import { useMemo, useRef, useState, useCallback } from 'react';
+import type { DragEvent } from 'react';
 import mammoth from 'mammoth';
 
 interface NovelChapter {
@@ -54,7 +55,7 @@ const CHAPTER_PATTERN = new RegExp(
   '(?:第[一二三四五六七八九十百千万零〇\\d]+[章节卷篇集回][^\\n]*)' +
   // 2. Chapter N / Part N / Act N / Scene / Episode（英文），支持罗马数字 + 点 — 覆盖荒野的呼唤
   '|(?:(?:Chapter|Part|Act|Scene|Episode)\\s+[\\dIVXivx]+[^\\n]*)' +
-  // 3. 全角空格前缀 + 单个中文数字独占一行 — 覆盖狂人日记"　　一"
+  // 3. 全角空格前缀 + 单个中文数字独占一行，覆盖狂人日记的独立中文序号
   '|(?:[\u3000\\s]*[一二三四五六七八九十]+[ \\t\u3000]*$)' +
   // 4. 中文数字序号 "一、" "二、" 等独占一行
   '|(?:[一二三四五六七八九十]{1,3}[、。])' +
