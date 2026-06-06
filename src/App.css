@@ -1060,6 +1060,57 @@ body {
   box-shadow: 0 0 0 3px rgba(184,138,68,0.14);
 }
 
+.yaml-check-item {
+  display: grid;
+  gap: 5px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+}
+
+.yaml-check-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.yaml-check-head span {
+  color: var(--ink);
+  font-weight: 900;
+}
+
+.yaml-check-head b {
+  color: var(--ink-light);
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.yaml-check-item--passed .yaml-check-head b {
+  color: var(--sage);
+}
+
+.yaml-check-detail {
+  color: var(--ink-light);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.yaml-check-why {
+  color: #718096;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.yaml-check-action {
+  padding: 7px 8px;
+  border-radius: 7px;
+  background: rgba(184,138,68,0.09);
+  color: var(--gold-dim);
+  font-size: 12px;
+  line-height: 1.45;
+  font-weight: 800;
+}
+
 @media (max-width: 720px) {
   .yaml-export-head {
     align-items: flex-start;
@@ -1144,6 +1195,78 @@ body {
   background: rgba(184,92,92,0.1);
   border: 1px solid rgba(184,92,92,0.25);
   color: var(--danger);
+}
+
+/* ---------- Chapter Review ---------- */
+.chapter-review-row {
+  display: grid;
+  grid-template-columns: 82px minmax(220px, 1fr) minmax(190px, 0.36fr) minmax(180px, 0.42fr);
+  gap: 12px;
+  align-items: center;
+  padding: 12px 14px;
+  border: 1px solid rgba(222,216,199,0.82);
+  border-radius: 10px;
+  background: #fffdf8;
+}
+
+.chapter-review-index {
+  color: var(--gold-dim);
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.chapter-review-title {
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 950;
+  line-height: 1.35;
+}
+
+.chapter-review-preview {
+  margin-top: 2px;
+  color: var(--ink-light);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.chapter-review-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chapter-review-metrics span {
+  padding: 4px 7px;
+  border-radius: 6px;
+  background: rgba(241,245,249,0.8);
+  color: var(--ink-light);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.chapter-review-status {
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+  text-align: right;
+  font-size: 12px;
+}
+
+.chapter-review-status small {
+  color: var(--ink-light);
+  line-height: 1.45;
+}
+
+@media (max-width: 860px) {
+  .chapter-review-row {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
+  .chapter-review-status {
+    justify-items: start;
+    text-align: left;
+  }
 }
 
 /* ---------- Character Graph (sidebar) ---------- */
