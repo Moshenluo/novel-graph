@@ -292,6 +292,13 @@ interface AICharacter {
   confidence?: string;
 }
 
+interface AIChapterBoundary {
+  title: string;
+  content: string;
+  reason?: string;
+  confidence?: 'low' | 'medium' | 'high';
+}
+
 const aiExtractCharacters = async (chapters: NovelChapter[]): Promise<AICharacter[]> => {
   const fullText = chapters.map((c) => `【${c.title}】\n${c.content}`).join('\n\n');
   const truncatedText = fullText.slice(0, 8000);
@@ -337,6 +344,62 @@ const aiExtractCharacters = async (chapters: NovelChapter[]): Promise<AICharacte
       return { name: nameMatch?.[1] ?? `角色${i + 1}`, role: 'supporting', evidence: '', confidence: 'low' };
     });
   }
+};
+
+const aiReviewChapterBoundaries = async (text: string, localChapters: NovelChapter[]): Promise<AIChapterBoundary[]> => {
+  const localSummary = localChapters.map((chapter) => ({
+    index: chapter.index,
+    title: chapter.title,
+    char_count: chapter.content.length,
+    preview: compactText(chapter.content, 180),
+  }));
+  const sourceText = text.replace(/\r\n/g, '\n').trim().slice(0, 14000);
+
+  const systemPrompt = `你是中文小说文本整理与章节边界校对助手。
+
+任务：根据原文重新判断章节/篇目边界，修正本地规则误切的问题。
+
+适用情况包括：
+- 小说合集或短篇集，例如《呐喊》，每个篇名可能应作为一个独立章节/篇目。
+- 有序言、目录、题记、版权信息、空行或页眉页脚混入正文。
+- 章节标题不是“第X章”，而是“狂人日记”“孔乙己”“药”等篇名。
+
+要求：
+1. 只依据用户提供的原文，不要补写正文。
+2. 删除目录、版权、页眉页脚等非正文内容。
+3. 保留真实篇名/章节名；如果标题不明显，可用“片段一”“片段二”。
+4. content 必须是该章节对应的正文，不能只是摘要。
+5. 至少返回 3 个章节/篇目；如果原文不足 3 个，返回你能确认的章节并把 confidence 设为 low。
+6. 不要把同一篇正文切成许多很短的小段，除非原文本来就是分节结构。
+
+输出纯 JSON 数组，不要 markdown：
+[
+  {"title":"狂人日记","content":"正文...","reason":"识别为独立篇目标题","confidence":"high"}
+]`;
+
+  const userPrompt = `本地规则识别结果如下，可能有误：
+${JSON.stringify(localSummary, null, 2)}
+
+请根据下面原文重新校对章节/篇目边界：
+
+${sourceText}`;
+
+  const result = await callDeepSeek(systemPrompt, userPrompt);
+  const jsonMatch = result.match(/```(?:json)?\s*([\s\S]*?)```/) ?? result.match(/(\[[\s\S]*\])/);
+  const jsonStr = jsonMatch ? jsonMatch[1].trim() : result.trim();
+  const parsed = JSON.parse(jsonStr) as AIChapterBoundary[];
+
+  return parsed
+    .map((chapter) => ({
+      title: String(chapter.title || '').trim(),
+      content: String(chapter.content || '').replace(/\r\n/g, '\n').trim(),
+      reason: chapter.reason ? String(chapter.reason).trim() : '',
+      confidence: (chapter.confidence === 'low' || chapter.confidence === 'medium' || chapter.confidence === 'high'
+        ? chapter.confidence
+        : 'medium') as AIChapterBoundary['confidence'],
+    }))
+    .filter((chapter) => chapter.title && chapter.content.length >= 30)
+    .slice(0, 60);
 };
 
 interface AISceneEnrichment {
@@ -500,6 +563,13 @@ const splitNovelChapters = (text: string): NovelChapter[] => {
     })
     .map((chapter, idx) => ({ title: chapter.title, content: chapter.content, index: idx + 1 }));
 };
+
+const formatReviewedChapters = (reviewedChapters: AIChapterBoundary[]) => reviewedChapters
+  .map((chapter, index) => {
+    const rawTitle = chapter.title.replace(/^第[一二三四五六七八九十百千万零〇\d]+[章节卷篇集回]\s*/, '').trim() || chapter.title;
+    return `第${index + 1}章 ${rawTitle}\n\n${chapter.content.trim()}`;
+  })
+  .join('\n\n');
 
 const compactText = (value: string, max = 100) => {
   const text = value.replace(/\s+/g, ' ').trim();
@@ -764,6 +834,7 @@ function App() {
   const [importedFileName, setImportedFileName] = useState('');
   const [isDragging, setIsDragging] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
+  const [chapterReviewing, setChapterReviewing] = useState(false);
   const [yamlRefining, setYamlRefining] = useState(false);
   const [yamlEditInstruction, setYamlEditInstruction] = useState('');
   const [yamlSelection, setYamlSelection] = useState({ start: 0, end: 0, text: '' });
@@ -1379,6 +1450,40 @@ function App() {
     }
   };
 
+  const handleReviewChaptersWithAI = async () => {
+    if (!novelInput.trim()) {
+      setError('请先导入或粘贴小说文本。');
+      return;
+    }
+    if (!aiAvailable) {
+      setError('AI 章节校对需要配置 VITE_DEEPSEEK_API_KEY。当前仍可使用规则识别结果手动确认。');
+      return;
+    }
+
+    setChapterReviewing(true);
+    setError('');
+    setStatus('AI 正在校对章节边界，请稍候...');
+
+    try {
+      const reviewedChapters = await aiReviewChapterBoundaries(novelInput, chapters);
+      if (reviewedChapters.length < 3) {
+        throw new Error(`AI 仅确认到 ${reviewedChapters.length} 个章节/篇目，请检查原文是否包含至少 3 个章节。`);
+      }
+
+      setNovelInput(formatReviewedChapters(reviewedChapters));
+      setScreenplayYaml('');
+      setAiCharacters(null);
+      setGenerationStats(createEmptyGenerationStats());
+      aiRunRef.current = '';
+      setStatus(`AI 已校对章节边界，确认 ${reviewedChapters.length} 个章节/篇目。请复核后继续。`);
+    } catch (reviewError) {
+      setStatus('');
+      setError(reviewError instanceof Error ? reviewError.message : 'AI 章节校对失败，请先使用规则识别结果手动确认。');
+    } finally {
+      setChapterReviewing(false);
+    }
+  };
+
   const handleCopy = async () => {
     if (!screenplayYaml) return;
     await navigator.clipboard.writeText(screenplayYaml);
@@ -1506,14 +1611,36 @@ function App() {
     if (activeStep === 1) {
       return (
         <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 18 }}>
             <div>
               <h3 style={{ margin: 0, fontSize: 24, fontWeight: 950 }}>章节确认</h3>
-              <p style={{ margin: '6px 0 0', color: COLORS.muted }}>先确认系统识别到的章节，再进入剧本草案。</p>
+              <p style={{ margin: '6px 0 0', color: COLORS.muted }}>先确认规则识别到的章节；遇到《呐喊》这类篇目式文本，可让 AI 校对边界。</p>
             </div>
-            <button onClick={() => setActiveStep(0)} style={{ padding: '11px 14px', border: `1px solid ${COLORS.line}`, borderRadius: 10, background: '#fff', fontWeight: 850, cursor: 'pointer' }}>返回修改文本</button>
+            <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 10 }}>
+              <button
+                onClick={handleReviewChaptersWithAI}
+                disabled={!aiAvailable || chapterReviewing || chapters.length < 1}
+                style={{
+                  padding: '11px 14px',
+                  border: 'none',
+                  borderRadius: 10,
+                  background: aiAvailable ? COLORS.ink : '#e2e8f0',
+                  color: aiAvailable ? '#fff' : COLORS.muted,
+                  fontWeight: 900,
+                  cursor: aiAvailable && !chapterReviewing ? 'pointer' : 'not-allowed',
+                }}
+              >
+                {chapterReviewing ? 'AI 校对中...' : 'AI 校对章节'}
+              </button>
+              <button onClick={() => setActiveStep(0)} style={{ padding: '11px 14px', border: `1px solid ${COLORS.line}`, borderRadius: 10, background: '#fff', fontWeight: 850, cursor: 'pointer' }}>返回修改文本</button>
+            </div>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12, marginBottom: 16 }}>
+          <div style={{ marginBottom: 16, padding: '12px 14px', border: `1px solid ${aiAvailable ? 'rgba(184,138,68,0.28)' : COLORS.line}`, borderRadius: 12, background: aiAvailable ? 'rgba(184,138,68,0.08)' : '#f8fafc', color: COLORS.muted, fontSize: 13, lineHeight: 1.65 }}>
+            {aiAvailable
+              ? 'AI 校对会参考原文重划篇目/章节，并把结果写回输入文本；后续人物图谱和 YAML 都会基于校对后的章节重新生成。'
+              : '当前未启用 AI，系统会使用规则识别结果。若《呐喊》等篇目边界不准，可配置环境变量后再执行 AI 校对。'}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 16 }}>
             {[
               ['章节就绪', `${chapterReadinessSummary.readyCount}/${chapters.length}`, chapterReadinessSummary.readyCount === chapters.length && chapters.length >= 3],
               ['待关注项', `${chapterReadinessSummary.warningCount} 项`, chapterReadinessSummary.warningCount === 0],
