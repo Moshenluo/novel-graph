@@ -130,11 +130,9 @@ Schema 设计原则：
 
 ## Demo 视频
 
-Demo 视频链接（提交前替换为 bilibili、网盘或其他可公开访问平台链接）：
+Demo 视频链接：
 
-```text
-待上传：请在最终提交前替换为可播放公开视频链接。
-```
+[https://www.bilibili.com/video/BV1aaEb6UECu/](https://www.bilibili.com/video/BV1aaEb6UECu/?vd_source=487e2383308cc0eb26996471216f4cfa)
 
 建议视频覆盖：
 
