@@ -26,10 +26,10 @@
 
 ## Demo 视频
 
-- [ ] 按 [demo-script.md](demo-script.md) 录制有声音讲解的视频。
-- [ ] 视频上传到 bilibili、网盘或其他可公开访问平台。
-- [ ] 视频链接可以无登录播放或至少评委可访问。
-- [ ] README 的 Demo 视频链接已替换为真实链接。
+- [x] 按 [demo-script.md](demo-script.md) 录制有声音讲解的视频。
+- [x] 视频上传到 bilibili、网盘或其他可公开访问平台。
+- [x] 视频链接可以无登录播放或至少评委可访问。
+- [x] README 的 Demo 视频链接已替换为真实链接。
 
 ## 开发过程
 

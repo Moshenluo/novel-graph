@@ -20,7 +20,7 @@
 | --- | --- | --- |
 | 公开 GitHub/Gitee 仓库 | 待最终确认 | 提交前确认仓库可公开访问。 |
 | README 文档 | 已覆盖 | README 已说明运行方式、主题功能、Schema、依赖、原创功能和 Demo 要求。 |
-| Demo 视频 | 待录制 | 录制后将可播放链接替换 README 中的 TODO。 |
+| Demo 视频 | 已完成 | README 已替换为可访问的 bilibili Demo 视频链接。 |
 | PR 与 commit 记录 | 已推进 | 保持小粒度 PR，每个 PR 写清功能描述、实现思路、测试方式。 |
 
 ## 3. 代码与安全
@@ -32,9 +32,13 @@
 | 不提交 API Key | 已检查 | 仓库不应包含真实 API Key；本项目主题功能不依赖外部接口。 |
 | 旧图谱实验入口清理 | 已处理 | 主流程仅保留人物共现图谱作为辅助检查能力。 |
 
-## 4. Demo 录制建议
+## 4. Demo 视频
 
-录制时建议控制在 3 到 5 分钟：
+已同步至 README：
+
+[https://www.bilibili.com/video/BV1aaEb6UECu/](https://www.bilibili.com/video/BV1aaEb6UECu/?vd_source=487e2383308cc0eb26996471216f4cfa)
+
+视频覆盖建议核对项：
 
 1. 打开 README，说明题目要求和本项目主流程。
 2. 启动项目，进入首页工作台。
@@ -46,7 +50,7 @@
 
 ## 5. 最后提交前必须完成
 
-- 将 README 中的 Demo TODO 替换为公开视频链接。
+- 确认 README 中的 Demo 视频链接可以正常播放。
 - 确认 GitHub 默认分支文件已更新到最终版本。
 - 确认 PR 描述不为空，且标题、功能描述、实现思路、测试方式齐全。
 - 确认所有 commit 时间落在比赛批次允许范围内。
